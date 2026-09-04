@@ -130,6 +130,29 @@ describe('generateBlocks', () => {
     expect(noBody?.name).toBeNull();
     expect(stripComments(noBody!.code)).toBe('');
   });
+
+  it('у блока проставлена категория — по ней UI группирует вывод', () => {
+    const blocks = generateBlocks(spec, entry('GET', '/users/{id}'));
+    const kindOf = (name: string) => blocks.find((b) => b.name === name)?.kind;
+
+    expect(kindOf('GetUserByIdPathParams')).toBe('path');
+    expect(kindOf('GetUserByIdQueryParams')).toBe('query');
+    expect(kindOf('GetUserByIdResponse200')).toBe('response');
+    expect(kindOf('UserResponseDto')).toBe('dto');
+    // заголовок эндпоинта не относится ни к одной секции
+    expect(blocks[0].kind).toBeUndefined();
+  });
+
+  it('ответ без тела всё равно относится к секции ответов', () => {
+    const blocks = generateBlocks(spec, entry('DELETE', '/users/{id}'));
+    const noBody = blocks.find((b) => b.code.includes('// 204'));
+    expect(noBody?.kind).toBe('response');
+  });
+
+  it('тело запроса — категория body', () => {
+    const blocks = generateBlocks(spec, entry('POST', '/users'));
+    expect(blocks.find((b) => b.name === 'CreateUserBody')?.kind).toBe('body');
+  });
 });
 
 describe('generateForEndpoint: POST /users', () => {

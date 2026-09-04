@@ -3,9 +3,9 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import hljs from 'highlight.js/lib/core';
 import typescript from 'highlight.js/lib/languages/typescript';
 // стили токенов подсветки — свои, на CSS-переменных (см. App.vue), чтобы работали обе темы
-import { findMatches, stripComments, type GeneratedBlock } from '@openapi-parser/core';
-import { getHost } from '../host';
-import { t } from '../i18n';
+import { findMatches, stripComments, type GeneratedBlock, type TypeKind } from '@openapi-parser/core';
+import { getHost, hostStorage } from '../host';
+import { t, type MessageKey } from '../i18n';
 import { useFindInTypes } from '../composables/useFindInTypes';
 import { useHooksEditor } from '../composables/useHooksEditor';
 import FindBar from './FindBar.vue';
@@ -19,6 +19,7 @@ const props = defineProps<{ blocks: GeneratedBlock[] }>();
 const view = computed(() =>
   props.blocks.map((b) => ({
     name: b.name,
+    kind: b.kind,
     html: hljs.highlight(b.code, { language: 'typescript' }).value,
     copy: stripComments(b.code),
   })),
@@ -30,6 +31,83 @@ const allCode = computed(() =>
     .filter(Boolean)
     .join('\n\n'),
 );
+
+// ------------------------------------------------------------ группировка по секциям
+
+type ViewBlock = (typeof view.value)[number];
+
+/**
+ * Названия секций хранятся ключами, а не готовыми строками: карта живёт на уровне
+ * модуля, и t() здесь вычислился бы один раз — заголовки навсегда остались бы на
+ * языке первого рендера. Резолвится ключ уже в шаблоне.
+ *
+ * Record по TypeKind, а не конкатенация `output.section${kind}`: новая категория в
+ * core станет ошибкой tsc здесь, а не пустым заголовком у пользователя.
+ */
+const SECTION_KEY: Record<TypeKind, MessageKey> = {
+  path: 'output.sectionPath',
+  query: 'output.sectionQuery',
+  body: 'output.sectionBody',
+  response: 'output.sectionResponse',
+  dto: 'output.sectionDto',
+};
+
+interface Section {
+  kind: TypeKind;
+  blocks: ViewBlock[];
+  /** Весь код секции без комментариев — для кнопки копирования секции целиком */
+  code: string;
+}
+
+// Блок без kind — заголовок эндпоинта: он не относится ни к одной секции и рисуется над ними
+const headerBlocks = computed(() => view.value.filter((b) => !b.kind));
+
+/** Блоки по категориям, в порядке первого появления категории. Пустых секций не бывает. */
+const sections = computed<Section[]>(() => {
+  const byKind = new Map<TypeKind, ViewBlock[]>();
+  for (const b of view.value) {
+    if (!b.kind) continue;
+    const list = byKind.get(b.kind);
+    if (list) list.push(b);
+    else byKind.set(b.kind, [b]);
+  }
+  return [...byKind].map(([kind, blocks]) => ({
+    kind,
+    blocks,
+    code: blocks
+      .map((b) => b.copy)
+      .filter(Boolean)
+      .join('\n\n'),
+  }));
+});
+
+// ------------------------------------------------------------ сворачивание секций
+
+// Свёрнутое состояние хранится по категории, а не по эндпоинту: свернувший DTO
+// хочет, чтобы они остались свёрнутыми и на следующем эндпоинте.
+// Храним именно свёрнутые: по умолчанию раскрыто всё, и битое значение даёт то же самое.
+const COLLAPSED_KEY = 'openapi-parser:sections-collapsed';
+
+const collapsed = ref<Set<TypeKind>>(readCollapsed());
+
+function readCollapsed(): Set<TypeKind> {
+  try {
+    const raw = hostStorage.get(COLLAPSED_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((k): k is TypeKind => typeof k === 'string' && k in SECTION_KEY));
+  } catch {
+    return new Set();
+  }
+}
+
+function toggleSection(kind: TypeKind) {
+  const next = new Set(collapsed.value);
+  if (next.has(kind)) next.delete(kind);
+  else next.add(kind);
+  collapsed.value = next;
+  hostStorage.set(COLLAPSED_KEY, JSON.stringify([...next]));
+}
 
 // открытая панель сравнения: имя типа + его чистый код
 const compare = ref<{ name: string; code: string } | null>(null);
@@ -151,8 +229,27 @@ function rebuildHighlights() {
   paintHighlights();
 }
 
+/**
+ * Развернуть секцию, внутри которой оказалось совпадение.
+ *
+ * Без этого шаг поиска в свёрнутую секцию выглядел бы сломанным: узел скрыт,
+ * getBoundingClientRect даёт нули, и scrollRangeIntoView молча ничего не делает —
+ * счётчик растёт, а панель стоит на месте.
+ *
+ * Возвращает true, если что-то развернули: вызывающему нужно дождаться перерисовки,
+ * иначе он померит всё те же нулевые размеры.
+ */
+function revealSection(range: Range): boolean {
+  const start = range.startContainer;
+  const el = start instanceof Element ? start : start.parentElement;
+  const kind = el?.closest<HTMLElement>('.section')?.dataset.kind as TypeKind | undefined;
+  if (!kind || !collapsed.value.has(kind)) return false;
+  toggleSection(kind);
+  return true;
+}
+
 /** Разложить найденное по двум реестрам: текущее совпадение красится ярче остальных. */
-function paintHighlights() {
+async function paintHighlights() {
   if (!ranges.length) {
     CSS.highlights.delete(HL_ALL);
     CSS.highlights.delete(HL_ACTIVE);
@@ -164,6 +261,8 @@ function paintHighlights() {
   else CSS.highlights.delete(HL_ALL);
   if (active) {
     CSS.highlights.set(HL_ACTIVE, new Highlight(active));
+    // размеры появляются только после перерисовки развёрнутой секции
+    if (revealSection(active)) await nextTick();
     scrollRangeIntoView(active);
   } else {
     CSS.highlights.delete(HL_ACTIVE);
@@ -282,23 +381,108 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <div ref="blocksRoot" class="blocks">
-          <div v-for="(b, i) in view" :key="i" class="block">
-            <div v-if="b.name && b.copy" class="block-head">
-              <span class="block-name">{{ b.name }}</span>
-              <button class="copy-btn" :title="t('output.copyOneTitle')" @click="copy(b.copy, String(i))">
-                {{ copiedKey === String(i) ? '✓' : t('output.copy') }}
+          <!-- заголовок эндпоинта: не в секции, поэтому стоит над ними -->
+          <pre v-for="(b, i) in headerBlocks" :key="`h${i}`" class="code"><code class="hljs" v-html="b.html"></code></pre>
+
+          <section
+            v-for="s in sections"
+            :key="s.kind"
+            class="section"
+            :class="`section--${s.kind}`"
+            :data-kind="s.kind"
+          >
+            <!--
+              Две настоящие кнопки-соседа, а не вложенные друг в друга: кнопка внутри
+              кнопки — невалидная разметка, и скринридер такую вложенность схлопывает.
+              Сворачивание висит на button, а не на div с @click, чтобы ходить с клавиатуры.
+            -->
+            <div class="section-head">
+              <button
+                class="section-toggle"
+                type="button"
+                :title="t('output.toggleSection')"
+                :aria-expanded="!collapsed.has(s.kind)"
+                @click="toggleSection(s.kind)"
+              >
+                <span class="section-caret">{{ collapsed.has(s.kind) ? '▸' : '▾' }}</span>
+                <span class="section-title">{{ t(SECTION_KEY[s.kind]) }}</span>
+                <span class="section-count">{{ s.blocks.length }}</span>
               </button>
               <button
-                class="copy-btn"
-                :class="{ 'copy-btn--active': compare?.name === b.name }"
-                :title="t('output.compareTitle')"
-                @click="compare = { name: b.name!, code: b.copy }"
+                v-if="s.code"
+                class="copy-btn copy-btn--icon section-copy"
+                type="button"
+                :title="t('output.copySectionTitle')"
+                :aria-label="t('output.copySection')"
+                @click="copy(s.code, `s:${s.kind}`)"
               >
-                {{ t('output.compare') }}
+                <svg
+                  v-if="copiedKey === `s:${s.kind}`"
+                  class="icon icon--ok"
+                  viewBox="0 0 16 16"
+                  aria-hidden="true"
+                >
+                  <path d="M3.5 8.5l3 3 6-6" />
+                </svg>
+                <svg v-else class="icon" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="5.5" y="5.5" width="8" height="9" rx="1.5" />
+                  <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
+                </svg>
               </button>
             </div>
-            <pre class="code"><code class="hljs" v-html="b.html"></code></pre>
-          </div>
+
+            <!--
+              v-show, а не v-if: скрытые pre.code обязаны остаться в документе, иначе
+              rebuildHighlights их не обойдёт и Ctrl+F молча терял бы совпадения в
+              свёрнутой секции — счётчик врал бы пользователю.
+            -->
+            <div v-show="!collapsed.has(s.kind)" class="section-body">
+              <div v-for="(b, i) in s.blocks" :key="i" class="block">
+                <!--
+                  Кнопки блока — иконочные: на строку их две у каждого типа, и подписи
+                  съедали бы место у самого имени. Смысл несут title и aria-label:
+                  без текста внутри кнопка иначе осталась бы безымянной для скринридера.
+                  Иконки рисуются currentColor, поэтому обе темы получаются даром.
+                -->
+                <div v-if="b.name && b.copy" class="block-head">
+                  <span class="block-name">{{ b.name }}</span>
+                  <button
+                    class="copy-btn copy-btn--icon"
+                    :title="t('output.copyOneTitle')"
+                    :aria-label="t('output.copy')"
+                    @click="copy(b.copy, `${s.kind}:${i}`)"
+                  >
+                    <svg
+                      v-if="copiedKey === `${s.kind}:${i}`"
+                      class="icon icon--ok"
+                      viewBox="0 0 16 16"
+                      aria-hidden="true"
+                    >
+                      <path d="M3.5 8.5l3 3 6-6" />
+                    </svg>
+                    <svg v-else class="icon" viewBox="0 0 16 16" aria-hidden="true">
+                      <rect x="5.5" y="5.5" width="8" height="9" rx="1.5" />
+                      <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
+                    </svg>
+                  </button>
+                  <button
+                    class="copy-btn copy-btn--icon"
+                    :class="{ 'copy-btn--active': compare?.name === b.name }"
+                    :title="t('output.compareTitle')"
+                    :aria-label="t('output.compare')"
+                    :aria-pressed="compare?.name === b.name"
+                    @click="compare = { name: b.name!, code: b.copy }"
+                  >
+                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="M6.5 3.5h-3v9h3M9.5 3.5h3v9h-3" />
+                      <path d="M8 1.5v13" />
+                    </svg>
+                  </button>
+                </div>
+                <pre class="code"><code class="hljs" v-html="b.html"></code></pre>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
       <TypeDiffPanel
@@ -361,8 +545,112 @@ onBeforeUnmount(() => {
   border-color: var(--accent);
   color: var(--accent);
 }
+/* иконочная кнопка: квадрат под 16px-иконку вместо горизонтальных отступов под текст */
+.copy-btn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  color: var(--muted);
+}
+.copy-btn--icon:hover {
+  color: var(--text);
+}
+.copy-btn--icon.copy-btn--active {
+  color: var(--accent);
+}
+/*
+ * Контур, а не заливка: иконки наследуют color кнопки через currentColor,
+ * поэтому обе темы и палитра VSCode работают без отдельных правил.
+ */
+.icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.icon--ok {
+  color: var(--success);
+  stroke-width: 1.8;
+}
 .blocks {
   padding: 8px 16px 24px;
+}
+.section {
+  margin-top: 14px;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+/* тянется на всю ширину, чтобы клик по пустому месту строки тоже сворачивал секцию */
+.section-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 600 11px/1.4 -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.section-toggle:hover {
+  color: var(--text);
+}
+/* явный color: без него треугольник берёт чёрный по умолчанию и пропадает в тёмной теме */
+.section-caret {
+  width: 10px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.section-title {
+  color: inherit;
+}
+.section-count {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+/* кнопка копирования секции прижата к правому краю: .section-toggle забирает остаток строки */
+.section-copy {
+  flex: none;
+}
+/*
+ * Полоса слева — единственный носитель цвета категории. Цвета берутся из переменных
+ * App.vue, поэтому в панели VSCode они автоматически приезжают из темы редактора.
+ */
+.section-body {
+  margin-top: 4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--muted);
+}
+.section--path .section-body {
+  border-left-color: var(--accent);
+}
+.section--query .section-body {
+  border-left-color: var(--warning);
+}
+.section--body .section-body {
+  border-left-color: var(--success);
+}
+.section--response .section-body {
+  border-left-color: var(--danger);
 }
 .block {
   margin-bottom: 4px;

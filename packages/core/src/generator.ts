@@ -19,6 +19,12 @@ export interface GeneratedBlock {
   name: string | null;
   /** Код с комментариями — как он показывается в UI */
   code: string;
+  /**
+   * Категория блока — по ней UI группирует вывод в секции.
+   * Отсутствует только у заголовка эндпоинта: он не относится ни к одной секции.
+   * На текст кода не влияет — это описание блока, а не параметр генерации.
+   */
+  kind?: TypeKind;
 }
 
 /**
@@ -84,11 +90,11 @@ export function generateBlocks(
 
   if (pathParams.length) {
     const name = typeName(ctx, `${opName}PathParams`, 'path');
-    blocks.push({ name, code: renderParamsInterface(ctx, name, pathParams, 'path') });
+    blocks.push({ name, code: renderParamsInterface(ctx, name, pathParams, 'path'), kind: 'path' });
   }
   if (queryParams.length) {
     const name = typeName(ctx, `${opName}QueryParams`, 'query');
-    blocks.push({ name, code: renderParamsInterface(ctx, name, queryParams, 'query') });
+    blocks.push({ name, code: renderParamsInterface(ctx, name, queryParams, 'query'), kind: 'query' });
   }
 
   const bodyBlock = renderRequestBody(ctx, opName, entry.operation.requestBody);
@@ -106,7 +112,7 @@ export function generateBlocks(
 
   for (let i = 0; i < ctx.queue.length; i++) {
     const name = ctx.queue[i];
-    blocks.push({ name, code: emitNamedSchema(ctx, name) });
+    blocks.push({ name, code: emitNamedSchema(ctx, name), kind: 'dto' });
   }
 
   return blocks;
@@ -246,7 +252,7 @@ function renderRequestBody(
   if (!media?.schema) return null;
   const name = typeName(ctx, `${opName}Body`, 'body');
   const body = tsType(ctx, media.schema, '', 0, 'optional', 'body');
-  return { name, code: declaration(ctx, name, 'body', body, false, []) };
+  return { name, code: declaration(ctx, name, 'body', body, false, []), kind: 'body' };
 }
 
 function renderResponses(
@@ -267,11 +273,13 @@ function renderResponses(
       const name = typeName(ctx, `${opName}Response${suffix}`, 'response', status);
       const body = tsType(ctx, media.schema, '', 0, 'nullable', 'response');
       const alias = declaration(ctx, name, 'response', body, false, []);
-      blocks.push({ name, code: `${comment}\n${alias}` });
+      blocks.push({ name, code: `${comment}\n${alias}`, kind: 'response' });
     } else {
       // Комментарий уезжает в код, который пользователь вставляет к себе в репозиторий:
       // он всегда английский и от языка интерфейса не зависит.
-      blocks.push({ name: null, code: `${comment} — no response body` });
+      // kind проставлен и здесь, хотя имени нет: иначе «204 — без тела» выпал бы
+      // из секции ответов, а это как раз тот факт, который пользователь там ищет.
+      blocks.push({ name: null, code: `${comment} — no response body`, kind: 'response' });
     }
   }
   return blocks;

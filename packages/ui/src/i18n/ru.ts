@@ -53,6 +53,16 @@ export const ru = {
   'output.copy': 'Копировать',
   'output.compareTitle': 'Сравнить с вашим типом из кода',
   'output.compare': 'Сравнить',
+  // Названия секций вывода. Ключи резолвятся через карту SECTION_KEY в TypeOutput —
+  // забытая категория ловится tsc, а не пустым заголовком в интерфейсе.
+  'output.sectionPath': 'Path-параметры',
+  'output.sectionQuery': 'Query-параметры',
+  'output.sectionBody': 'Тело запроса',
+  'output.sectionResponse': 'Ответы',
+  'output.sectionDto': 'DTO',
+  'output.copySection': 'Копировать секцию',
+  'output.copySectionTitle': 'Копирует все типы секции без комментариев',
+  'output.toggleSection': 'Свернуть / развернуть секцию',
   'output.resize': 'Потяните, чтобы изменить ширину',
   'output.findPlaceholder': 'Найти в типах',
   'output.findPrev': 'Предыдущее совпадение (Shift+Enter)',
