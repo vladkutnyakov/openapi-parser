@@ -96,6 +96,17 @@ export function useHooks() {
     activeId.value = copy.id;
   }
 
+  /**
+   * Пресет из файла — всегда новый: активный не трогаем, а встроенный
+   * не форкаем случайно чужим кодом.
+   */
+  function addPreset(name: string, code: string) {
+    const created = createPreset(name, code);
+    userPresets.value.push(created);
+    activeId.value = created.id;
+    runtimeErrors.value = [];
+  }
+
   function deletePreset() {
     if (active.value.builtin) return;
     const id = active.value.id;
@@ -114,6 +125,7 @@ export function useHooks() {
     updateCode,
     renamePreset,
     duplicatePreset,
+    addPreset,
     deletePreset,
   };
 }

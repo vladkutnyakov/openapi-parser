@@ -6,7 +6,6 @@ import javascript from 'highlight.js/lib/languages/javascript';
 import { useHooks } from '../composables/useHooks';
 import { locale } from '../composables/useLocale';
 import {
-  defaultPresetCode,
   generateBlocksWithErrors,
   stripComments,
   type EndpointEntry,
@@ -37,6 +36,7 @@ const {
   updateCode,
   renamePreset,
   duplicatePreset,
+  addPreset,
   deletePreset,
 } = useHooks();
 
@@ -83,8 +83,32 @@ function onInput(value: string) {
   debounceTimer = setTimeout(() => updateCode(value), 300);
 }
 
-function insertExample() {
-  onInput(defaultPresetCode(locale.value));
+async function loadFromFile() {
+  const picked = await getHost().pickTextFile();
+  if (!picked) return; // отмена — молча
+  // Отложенная запись сработала бы уже после переключения на новый пресет
+  // и записала бы в него текст, который был в редакторе до загрузки
+  clearTimeout(debounceTimer);
+  addPreset(presetNameFromFile(picked.name), picked.text);
+  // draft подтянет watch(active)
+}
+
+function saveToFile() {
+  // именно draft: правки могли не дойти до стора через debounce,
+  // и в файл уехала бы предыдущая версия кода
+  void getHost().saveTextFile(fileNameFromPreset(presetName(active.value)), draft.value);
+}
+
+/** my-rules.js → my-rules; без имени — понятный дефолт */
+function presetNameFromFile(fileName: string): string {
+  const name = fileName.replace(/\.[^.]+$/, '').trim();
+  return name || t('hooks.presetFromFile');
+}
+
+function fileNameFromPreset(name: string): string {
+  // символы, запрещённые в именах файлов Windows; там же режем управляющие
+  const safe = name.replace(/[/\\:*?"<>|]/g, '-').trim();
+  return safe ? `${safe}.js` : 'preset.js';
 }
 
 // Tab внутри textarea вставляет отступ, а не уводит фокус
@@ -204,9 +228,19 @@ function commitRename() {
         <section class="pane">
           <div class="pane-head">
             <span class="pane-title">{{ t('hooks.title') }}</span>
-            <button class="btn" :title="t('hooks.insertExampleTitle')" @click="insertExample">
-              {{ t('hooks.insertExample') }}
-            </button>
+            <div class="pane-actions">
+              <button class="btn" :title="t('hooks.loadFileTitle')" @click="loadFromFile">
+                {{ t('hooks.loadFile') }}
+              </button>
+              <button
+                v-if="draft.trim()"
+                class="btn"
+                :title="t('hooks.saveFileTitle')"
+                @click="saveToFile"
+              >
+                {{ t('hooks.saveFile') }}
+              </button>
+            </div>
           </div>
           <div class="code-editor">
             <pre ref="codeHighlight" class="code-highlight" aria-hidden="true"><code
@@ -352,6 +386,12 @@ function commitRename() {
 .pane-title {
   font-size: 12px;
   color: var(--muted);
+}
+/* кнопки держатся вместе справа: без обёртки space-between растащил бы их по ширине */
+.pane-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
 }
 /* Подсветка ввода: <pre> снизу, прозрачная textarea сверху.
    Оба слоя обязаны иметь одинаковые шрифт, отступы и перенос строк,

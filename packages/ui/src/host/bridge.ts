@@ -34,6 +34,13 @@ export interface HostStorage {
   set(key: string, value: string): void;
 }
 
+/** Выбранный пользователем текстовый файл */
+export interface PickedFile {
+  /** Имя файла без пути — из него берётся имя пресета */
+  name: string;
+  text: string;
+}
+
 export interface HostBridge {
   readonly kind: 'web' | 'vscode';
   /**
@@ -49,5 +56,12 @@ export interface HostBridge {
   ): Promise<{ ok: boolean; code?: SpecErrorCode; params?: ErrorParams }>;
   copyText(text: string): Promise<void>;
   openExternal(url: string): void;
+  /**
+   * Диалог выбора файла; `null` — пользователь отменил.
+   * Не бросает: отмена не ошибка, а сбой чтения оболочка глушит сама.
+   */
+  pickTextFile(): Promise<PickedFile | null>;
+  /** Предложить сохранить текст файлом. Тоже не бросает — отмена молчит. */
+  saveTextFile(suggestedName: string, text: string): Promise<void>;
   storage: HostStorage;
 }

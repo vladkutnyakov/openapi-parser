@@ -1,5 +1,5 @@
 import { technicalError, type ErrorParams, type SpecErrorCode } from '@openapi-parser/core';
-import type { HostBridge, SpecLoadResult } from '@openapi-parser/ui';
+import type { HostBridge, PickedFile, SpecLoadResult } from '@openapi-parser/ui';
 
 /**
  * Реализация хоста для веб-версии: спеку грузит через middleware /__spec дев-сервера,
@@ -80,6 +80,53 @@ export function createWebHost(): HostBridge {
 
     openExternal(url: string) {
       window.open(url, '_blank', 'noopener,noreferrer');
+    },
+
+    pickTextFile(): Promise<PickedFile | null> {
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.js,.mjs,.txt,text/javascript';
+        // не display:none — скрытый так input в ряде браузеров игнорирует
+        // программный click(), и диалог молча не открывается
+        input.style.position = 'fixed';
+        input.style.left = '-9999px';
+
+        // отмена в старых движках события cancel не даёт — тогда input просто
+        // останется висеть в DOM до перезагрузки, а промис не разрешится.
+        // Это лучше ложного null: по нему UI решил бы, что пользователь отказался
+        const done = (value: PickedFile | null) => {
+          input.remove();
+          resolve(value);
+        };
+
+        input.addEventListener('cancel', () => done(null));
+        input.addEventListener('change', () => {
+          const file = input.files?.[0];
+          if (!file) return done(null);
+          file
+            .text()
+            .then((text) => done({ name: file.name, text }))
+            .catch(() => done(null));
+        });
+
+        document.body.append(input);
+        input.click();
+      });
+    },
+
+    async saveTextFile(suggestedName: string, text: string) {
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = suggestedName;
+      link.style.position = 'fixed';
+      link.style.left = '-9999px';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      // отзыв сразу после click() успевает отменить ещё не начавшуюся загрузку
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
     },
 
     storage: {

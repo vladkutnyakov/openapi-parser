@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
+import { basename } from 'node:path';
 import {
   ENV_GLOBAL,
   STATE_GLOBAL,
   type EnvSnapshot,
   type HostResponse,
+  type PickTextFilePayload,
   type WebviewRequest,
 } from '../../shared/protocol';
 import { SpecService } from './spec-service';
@@ -111,6 +113,32 @@ export class SpecPanel {
         await vscode.env.openExternal(vscode.Uri.parse(msg.url));
         return { ok: true };
 
+      case 'pickTextFile': {
+        const picked = await vscode.window.showOpenDialog({
+          canSelectMany: false,
+          defaultUri: workspaceUri(),
+          filters: { JavaScript: ['js', 'mjs', 'txt'] },
+        });
+        const uri = picked?.[0];
+        if (!uri) return null; // отмена — webview покажет это как «ничего не выбрали»
+        const bytes = await vscode.workspace.fs.readFile(uri);
+        const payload: PickTextFilePayload = {
+          name: basename(uri.fsPath),
+          text: new TextDecoder().decode(bytes),
+        };
+        return payload;
+      }
+
+      case 'saveTextFile': {
+        const uri = await vscode.window.showSaveDialog({
+          defaultUri: workspaceUri(msg.suggestedName),
+          filters: { JavaScript: ['js'] },
+        });
+        if (!uri) return { ok: false };
+        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(msg.text));
+        return { ok: true };
+      }
+
       case 'storageSet': {
         const state = this.readState();
         state[msg.key] = msg.value;
@@ -195,6 +223,17 @@ function highlightStyle(): string {
 
   if (!lines.length) return '';
   return `<style>\nbody {\n${lines.join('\n')}\n}\n</style>`;
+}
+
+/**
+ * Стартовая папка файловых диалогов. Как и в SpecService, отсчитываем от корня
+ * workspace: cwd у extension host — папка установки VSCode, диалог открывался бы там.
+ * Без workspace возвращаем undefined — тогда VSCode выберет папку сам.
+ */
+function workspaceUri(fileName?: string): vscode.Uri | undefined {
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+  if (!root) return undefined;
+  return fileName ? vscode.Uri.joinPath(root, fileName) : root;
 }
 
 function makeNonce(): string {

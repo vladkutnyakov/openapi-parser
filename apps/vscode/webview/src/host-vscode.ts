@@ -1,11 +1,12 @@
 import { SpecError, technicalError } from '@openapi-parser/core';
-import type { HostBridge, SpecLoadResult } from '@openapi-parser/ui';
+import type { HostBridge, PickedFile, SpecLoadResult } from '@openapi-parser/ui';
 import {
   ENV_GLOBAL,
   STATE_GLOBAL,
   type EnvSnapshot,
   type HostResponse,
   type LoadSpecPayload,
+  type PickTextFilePayload,
   type WebviewRequest,
   type WebviewRequestBody,
 } from '../../shared/protocol';
@@ -49,15 +50,22 @@ function listen() {
   });
 }
 
-function request(message: WebviewRequestBody): Promise<unknown> {
+/**
+ * `timeoutMs = 0` — без таймаута. Нужно запросам, длительность которых задаёт
+ * человек у нативного диалога: таймаут страхует от молча упавшего обработчика,
+ * а здесь host отвечает в любом случае — весь dispatch обёрнут в try/catch.
+ */
+function request(message: WebviewRequestBody, timeoutMs = REQUEST_TIMEOUT_MS): Promise<unknown> {
   listen();
   const id = String(nextId++);
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pending.delete(id);
-      // код, а не текст: сообщение соберёт слой ui на языке интерфейса
-      reject(new SpecError('host.timeout'));
-    }, REQUEST_TIMEOUT_MS);
+    const timer = timeoutMs
+      ? setTimeout(() => {
+          pending.delete(id);
+          // код, а не текст: сообщение соберёт слой ui на языке интерфейса
+          reject(new SpecError('host.timeout'));
+        }, timeoutMs)
+      : undefined;
 
     pending.set(id, {
       resolve: (value) => {
@@ -128,6 +136,16 @@ export function createVscodeHost(): HostBridge {
 
     openExternal(url: string) {
       void request({ type: 'openExternal', url }).catch(() => {});
+    },
+
+    async pickTextFile(): Promise<PickedFile | null> {
+      // без таймаута: диалог открыт ровно столько, сколько нужно пользователю
+      const payload = await request({ type: 'pickTextFile' }, 0).catch(() => null);
+      return (payload as PickTextFilePayload | null) ?? null;
+    },
+
+    async saveTextFile(suggestedName: string, text: string) {
+      await request({ type: 'saveTextFile', suggestedName, text }, 0).catch(() => {});
     },
 
     storage: {

@@ -30,6 +30,19 @@ export interface OpenExternalRequest {
   url: string;
 }
 
+/** Выбор файла нативным диалогом; ответ — PickTextFilePayload или null при отмене */
+export interface PickTextFileRequest {
+  id: string;
+  type: 'pickTextFile';
+}
+
+export interface SaveTextFileRequest {
+  id: string;
+  type: 'saveTextFile';
+  suggestedName: string;
+  text: string;
+}
+
 /** Запись состояния — ответа не требует, но id сохраняем для единообразия конверта */
 export interface StorageSetRequest {
   id: string;
@@ -43,6 +56,8 @@ export type WebviewRequest =
   | SaveAuthCookieRequest
   | CopyRequest
   | OpenExternalRequest
+  | PickTextFileRequest
+  | SaveTextFileRequest
   | StorageSetRequest;
 
 /**
@@ -84,6 +99,12 @@ export interface LoadSpecPayload {
   needsAuth?: boolean;
   loginUrl?: string;
   origin?: string;
+}
+
+/** Полезная нагрузка ответа на pickTextFile; отмена диалога приезжает как null */
+export interface PickTextFilePayload {
+  name: string;
+  text: string;
 }
 
 /** Имя глобальной переменной со снапшотом состояния, который host кладёт в HTML */

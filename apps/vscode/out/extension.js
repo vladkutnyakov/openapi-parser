@@ -38,6 +38,7 @@ var vscode4 = __toESM(require("vscode"));
 
 // extension/src/panel.ts
 var vscode3 = __toESM(require("vscode"));
+var import_node_path3 = require("node:path");
 
 // shared/protocol.ts
 var STATE_GLOBAL = "__OPENAPI_PARSER_STATE__";
@@ -433,6 +434,30 @@ var SpecPanel = class _SpecPanel {
       case "openExternal":
         await vscode3.env.openExternal(vscode3.Uri.parse(msg.url));
         return { ok: true };
+      case "pickTextFile": {
+        const picked = await vscode3.window.showOpenDialog({
+          canSelectMany: false,
+          defaultUri: workspaceUri(),
+          filters: { JavaScript: ["js", "mjs", "txt"] }
+        });
+        const uri = picked?.[0];
+        if (!uri) return null;
+        const bytes = await vscode3.workspace.fs.readFile(uri);
+        const payload = {
+          name: (0, import_node_path3.basename)(uri.fsPath),
+          text: new TextDecoder().decode(bytes)
+        };
+        return payload;
+      }
+      case "saveTextFile": {
+        const uri = await vscode3.window.showSaveDialog({
+          defaultUri: workspaceUri(msg.suggestedName),
+          filters: { JavaScript: ["js"] }
+        });
+        if (!uri) return { ok: false };
+        await vscode3.workspace.fs.writeFile(uri, new TextEncoder().encode(msg.text));
+        return { ok: true };
+      }
       case "storageSet": {
         const state = this.readState();
         state[msg.key] = msg.value;
@@ -497,6 +522,11 @@ body {
 ${lines.join("\n")}
 }
 </style>`;
+}
+function workspaceUri(fileName) {
+  const root = vscode3.workspace.workspaceFolders?.[0]?.uri;
+  if (!root) return void 0;
+  return fileName ? vscode3.Uri.joinPath(root, fileName) : root;
 }
 function makeNonce() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
