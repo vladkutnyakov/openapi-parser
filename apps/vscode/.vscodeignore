@@ -1,0 +1,14 @@
+# В .vsix едут только собранные артефакты: бандл extension host и сборка webview.
+# Исходники не нужны — extension.js уже содержит всё, что импортировал.
+extension/**
+webview/**
+shared/**
+node_modules/**
+esbuild.mjs
+package-vsix.mjs
+assets/icon-source.html
+tsconfig.json
+.vscodeignore
+**/*.map
+**/*.ts
+!out/extension.js

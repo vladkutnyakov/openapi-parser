@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "types": ["node", "vscode"]
+  },
+  // env.d.ts пакета ui — объявление модулей '*.vue' для webview-половины
+  "include": [
+    "extension/src",
+    "webview/src",
+    "shared",
+    "esbuild.mjs",
+    "webview/vite.config.ts",
+    "../../packages/ui/src/env.d.ts"
+  ]
+}

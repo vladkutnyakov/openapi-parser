@@ -1,0 +1,74 @@
+{
+  "name": "openapi-parser-vscode",
+  "displayName": "OpenAPI Parser TS",
+  "description": "Генерация TypeScript-типов по эндпоинту OpenAPI 3.x спеки",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "//icon": "Иконка расширения в списке Extensions. Только PNG от 128x128 — SVG здесь vsce не принимает. Пересобрать из assets/icon-source.html (см. README монорепы).",
+  "icon": "assets/icon.png",
+  "//": "type: commonjs перекрывает ESM корня — extension host грузится require'ом. Без private: true, иначе vsce package откажется паковать.",
+  "type": "commonjs",
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "openapiParser.open",
+        "title": "OpenAPI Parser TS: открыть панель",
+        "//iconForm": "Форма {light,dark} с одним файлом: иконка цветная и одинаково читается в обеих темах.",
+        "icon": {
+          "light": "assets/icon.svg",
+          "dark": "assets/icon.svg"
+        }
+      }
+    ],
+    "//viewsContainers": "Своя иконка в Activity Bar. Панель — самостоятельный инструмент, не действие над открытым файлом, поэтому место ей здесь, а не в editor/title. Внимание: здесь иконка рисуется МАСКОЙ по цвету темы — палитра из файла игнорируется, важна только форма (у нас чистые fill без stroke, поэтому маска выходит правильная).",
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "openapiParser",
+          "title": "OpenAPI Parser TS",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "//views": "Сама панель остаётся webview-панелью в области редактора: двухколоночный layout (список эндпоинтов + типы) в узкий сайдбар не помещается. View здесь нужен только чтобы контейнер существовал и было куда повесить кнопку запуска.",
+    "views": {
+      "openapiParser": [
+        {
+          "id": "openapiParser.launch",
+          "name": "Панель"
+        }
+      ]
+    },
+    "//viewsWelcome": "Пустой view с кнопкой: клик по иконке в Activity Bar сразу показывает способ открыть панель.",
+    "viewsWelcome": [
+      {
+        "view": "openapiParser.launch",
+        "contents": "Генерация TypeScript-типов по эндпоинту OpenAPI 3.x спеки.\n[Открыть панель](command:openapiParser.open)"
+      }
+    ]
+  },
+  "scripts": {
+    "build:webview": "vite build --config webview/vite.config.ts",
+    "build:extension": "node esbuild.mjs",
+    "build": "npm run build:webview && npm run build:extension",
+    "package": "npm run build && node package-vsix.mjs"
+  },
+  "//deps": "Всё нужное заинлайнено в out/extension.js и media/, поэтому в runtime-зависимостях пусто: иначе vsce уходит по симлинкам workspaces в корень монорепы и пытается упаковать её целиком.",
+  "devDependencies": {
+    "@openapi-parser/core": "*",
+    "@openapi-parser/ui": "*",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.24.0",
+    "vue": "^3.5.18"
+  }
+}

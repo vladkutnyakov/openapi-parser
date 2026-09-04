@@ -1,0 +1,49 @@
+/*
+ * Панель должна выглядеть частью редактора, поэтому переменные приложения
+ * переопределяются на переменные темы VSCode. Селектор на body, а не :root:
+ * специфичность выше, чем у объявлений в App.vue, и они перебиваются без правки компонентов.
+ *
+ * Классы vscode-* ставит сам VSCode, поэтому high-contrast поддерживается бесплатно.
+ */
+body.vscode-dark,
+body.vscode-light,
+body.vscode-high-contrast,
+body.vscode-high-contrast-light {
+  --bg: var(--vscode-editor-background);
+  --panel: var(--vscode-sideBar-background);
+  --border: var(--vscode-panel-border, var(--vscode-editorWidget-border));
+  --text: var(--vscode-editor-foreground);
+  --muted: var(--vscode-descriptionForeground);
+  --accent: var(--vscode-textLink-foreground);
+  --danger: var(--vscode-errorForeground);
+  --success: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+  --warning: var(--vscode-editorWarning-foreground);
+  --diff-add-bg: var(--vscode-diffEditor-insertedTextBackground);
+  --diff-del-bg: var(--vscode-diffEditor-removedTextBackground);
+  --hover: var(--vscode-list-hoverBackground);
+  --selected: var(--vscode-list-activeSelectionBackground);
+
+  /*
+   * Цвета подсветки сюда НЕ пишем: точные цвета токенов активной темы
+   * (`tokenColors`) в webview переменными не пробрасываются — их читает
+   * extension host и вкладывает блоком <style> прямо в HTML панели
+   * (extension/src/theme-service.ts, panel.ts).
+   *
+   * Палитра charts, стоявшая здесь раньше, давала лишь отдалённое сходство.
+   * Запасной вариант, если тему разобрать не удалось, — веб-палитра из App.vue.
+   */
+}
+
+/* шрифт редактора — панель не должна выбиваться из остального VSCode */
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+
+  /*
+   * VSCode инжектит в webview свой стиль с `padding: 0 20px` — он рассчитан на
+   * страницы-документы, а у нас интерфейс во всю ширину: из-за него по бокам
+   * появлялись пустые поля, а сайдбар не доходил до края панели.
+   * В App.vue сброшен только margin, поэтому padding гасим здесь.
+   */
+  padding: 0;
+}
