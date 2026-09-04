@@ -1,25 +1,39 @@
-# OpenAPI Parser TS
+**English** · [Русский](https://github.com/vladkutnyakov/openapi-parser/blob/master/apps/vscode/README-RU.md)
 
-Панель для VSCode: находит эндпоинт в OpenAPI 3.x спеке и генерирует готовые TypeScript-типы — path/query-параметры, тип тела запроса, типы ответов и все задействованные DTO с оригинальными именами бэкенда.
+# OpenAPI Types Tools
 
-## Как пользоваться
+Pick an endpoint from an OpenAPI 3.x spec and get ready-to-paste TypeScript types: path and query parameters, the request body, every response, and all referenced DTOs — under the names your backend actually uses.
 
-Два способа открыть панель:
+Built for the everyday case where the spec is the source of truth and retyping it by hand from Swagger UI is the boring part.
 
-- **кнопка `{→}` на вкладке** (рядом со «Split Editor Right») — панель откроется сбоку; если открытый файл лежит на диске, он сразу и загрузится как спека;
-- **команда «OpenAPI Parser TS: открыть панель»** из палитры (Ctrl+Shift+P) — откроет панель с последним использованным источником.
+## Getting started
 
-В верхнем поле — источник спеки:
+Two ways to open the panel:
 
-- путь к файлу: `C:\specs\api.json` (относительные пути считаются от корня проекта)
-- URL: `http://backend-host/v3/api-docs`
+- **the `{→}` button in the editor title bar** (next to "Split Editor Right") — opens the panel beside the current tab, and loads that file as the spec if it lives on disk;
+- **the "OpenAPI Types Tools: Open panel" command** (Ctrl+Shift+P) — opens the panel with your last used source.
 
-Спеку читает сам редактор, поэтому ни CORS, ни запущенный сервер не нужны.
+Then point the top field at a spec:
 
-## Возможности
+- a file path: `C:\specs\api.json` (relative paths resolve from the workspace root)
+- a URL: `http://backend-host/v3/api-docs`
 
-- **Правила генерации** (кнопка ⚙) — конвенции вашего бэкенда задаются JS-хуками, с живым предпросмотром. Пресеты переживают перезапуск редактора.
-- **Сравнение типов** — вставьте свой тип из кода, панель покажет по полям, что разошлось с контрактом. Сравнение семантическое: порядок полей и форматирование отличиями не считаются.
-- **Закрытые авторизацией спеки** — если источник отвечает редиректом на форму логина, панель предложит войти и вставить куку. Кука хранится в защищённом хранилище VSCode.
+The editor reads the spec itself, so there is no CORS to fight and no dev server to run.
 
-Панель наследует тему редактора, копирование идёт в буфер обмена VSCode.
+## Features
+
+**Generation rules.** Your backend has conventions — optional fields as `| null`, string enums collapsed to `string`, no semicolons. Instead of hardcoding one house style, the generator exposes JS hooks (`field`, `scalar`, `typeName`, `declaration`, `docs`) you can override in the ⚙ editor, with a live preview of the current endpoint. Presets survive editor restarts, and broken rules degrade to the defaults instead of breaking generation.
+
+**Type comparison.** Paste a type from your codebase and the panel shows, field by field, where it drifted from the contract: missing field, extra field, different type, different optionality. The comparison is semantic — field order, formatting, semicolons, quote style and union member order are not differences. Optionality is strict, though: `?:` and `| null` are not the same thing.
+
+**Specs behind a login.** If the source redirects to a login form, the panel offers a sign-in link and a field for your session cookie. The cookie goes to VSCode's `SecretStorage` — never to `localStorage`, never back into the webview.
+
+The panel follows your editor theme, including syntax highlighting colors, and copying uses the VSCode clipboard.
+
+## Requirements
+
+VSCode 1.90 or newer. No other dependencies — everything runs locally, and nothing is sent anywhere.
+
+## License
+
+[MIT](https://github.com/vladkutnyakov/openapi-parser/blob/master/LICENSE)

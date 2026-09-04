@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "npm run dev -w @openapi-parser/web",
     "build": "npm run typecheck && npm run build -w @openapi-parser/web",
-    "build:vsix": "npm run typecheck && npm run package -w openapi-parser-vscode",
+    "build:vsix": "npm run typecheck && npm run package -w openapi-types-tools",
     "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/ui --noEmit && tsc -p apps/web --noEmit && tsc -p apps/vscode --noEmit",
     "preview": "npm run preview -w @openapi-parser/web",
     "test": "vitest run",

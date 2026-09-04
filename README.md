@@ -31,7 +31,7 @@ npm run build:vsix
 code --install-extension apps/vscode/openapi-parser.vsix
 ```
 
-Дальше — команда «OpenAPI Parser TS: открыть панель» из палитры (Ctrl+Shift+P). Панель наследует тему редактора, копирование идёт в буфер VSCode, а кука для закрытых авторизацией спек хранится в защищённом хранилище VSCode.
+Дальше — команда «OpenAPI Types Tools: Open panel» из палитры (Ctrl+Shift+P). Панель наследует тему редактора, копирование идёт в буфер VSCode, а кука для закрытых авторизацией спек хранится в защищённом хранилище VSCode.
 
 Для разработки — F5 в этом репозитории: откроется Extension Development Host с установленным расширением.
 

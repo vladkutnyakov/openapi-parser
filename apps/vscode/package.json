@@ -1,16 +1,46 @@
 {
-  "name": "openapi-parser-vscode",
-  "displayName": "OpenAPI Parser TS",
-  "description": "Генерация TypeScript-типов по эндпоинту OpenAPI 3.x спеки",
-  "version": "0.1.0",
-  "publisher": "local",
+  "name": "openapi-types-tools",
+  "displayName": "OpenAPI Types Tools",
+  "description": "Generate TypeScript types from an OpenAPI 3.x endpoint — params, body, responses and all referenced DTOs",
+  "version": "1.0.0",
+  "author": {
+    "name": "Vlad Kutnyakov",
+    "email": "kutnyakov1@yandex.ru",
+    "url": "https://github.com/vladkutnyakov"
+  },
+  "publisher": "vladkutnyakov",
   "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vladkutnyakov/openapi-parser.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vladkutnyakov/openapi-parser/issues"
+  },
+  "homepage": "https://github.com/vladkutnyakov/openapi-parser/blob/master/apps/vscode/README.md",
+  "//keywords": "Marketplace учитывает первые 5 — порядок значим.",
+  "keywords": [
+    "openapi",
+    "swagger",
+    "typescript",
+    "types",
+    "api",
+    "codegen",
+    "dto",
+    "rest"
+  ],
   "categories": [
+    "Programming Languages",
+    "Snippets",
     "Other"
   ],
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
   "//icon": "Иконка расширения в списке Extensions. Только PNG от 128x128 — SVG здесь vsce не принимает. Пересобрать из assets/icon-source.html (см. README монорепы).",
   "icon": "assets/icon.png",
   "//": "type: commonjs перекрывает ESM корня — extension host грузится require'ом. Без private: true, иначе vsce package откажется паковать.",
@@ -21,7 +51,7 @@
     "commands": [
       {
         "command": "openapiParser.open",
-        "title": "OpenAPI Parser TS: открыть панель",
+        "title": "OpenAPI Types Tools: Open panel",
         "//iconForm": "Форма {light,dark} с одним файлом: иконка цветная и одинаково читается в обеих темах.",
         "icon": {
           "light": "assets/icon.svg",
@@ -34,7 +64,7 @@
       "activitybar": [
         {
           "id": "openapiParser",
-          "title": "OpenAPI Parser TS",
+          "title": "OpenAPI Types Tools",
           "icon": "assets/icon.svg"
         }
       ]
@@ -44,7 +74,7 @@
       "openapiParser": [
         {
           "id": "openapiParser.launch",
-          "name": "Панель"
+          "name": "Panel"
         }
       ]
     },
@@ -52,7 +82,7 @@
     "viewsWelcome": [
       {
         "view": "openapiParser.launch",
-        "contents": "Генерация TypeScript-типов по эндпоинту OpenAPI 3.x спеки.\n[Открыть панель](command:openapiParser.open)"
+        "contents": "Generate TypeScript types from an OpenAPI 3.x endpoint.\n[Open panel](command:openapiParser.open)"
       }
     ]
   },

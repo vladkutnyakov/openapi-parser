@@ -14,6 +14,9 @@ import { join, resolve } from 'node:path';
 const STAGE = 'stage';
 const OUT = 'openapi-parser.vsix';
 
+// vsce ругается на отсутствие .vscodeignore в stage/ — предупреждение ожидаемо и
+// безвредно: в stage/ кладётся ровно то, что должно уехать в пакет, игнорировать нечего.
+
 await rm(STAGE, { recursive: true, force: true });
 await mkdir(STAGE, { recursive: true });
 
@@ -36,7 +39,13 @@ await cp('assets', join(STAGE, 'assets'), {
   recursive: true,
   filter: (src) => !src.endsWith('icon-source.html'),
 });
-await cp('README.md', join(STAGE, 'README.md')).catch(() => {});
+// Витрина Marketplace: README — описание на странице, CHANGELOG и LICENSE — отдельные
+// вкладки. Без .catch: пропавший файл должен ронять сборку, а не выпускать пакет
+// с пустой вкладкой лицензии. LICENSE лежит в корне монорепы — он общий на весь проект.
+await cp('README.md', join(STAGE, 'README.md'));
+await cp('README-RU.md', join(STAGE, 'README-RU.md'));
+await cp('CHANGELOG.md', join(STAGE, 'CHANGELOG.md'));
+await cp(join('..', '..', 'LICENSE'), join(STAGE, 'LICENSE'));
 
 // зовём сам скрипт vsce, а не npx: на Windows spawn npx.cmd из ESM падает
 const require = createRequire(import.meta.url);
@@ -44,7 +53,9 @@ const vsce = resolve(require.resolve('@vscode/vsce/package.json'), '..', 'vsce')
 
 execFileSync(
   process.execPath,
-  [vsce, 'package', '--allow-missing-repository', '--no-dependencies', '--out', join('..', OUT)],
+  // --allow-missing-repository убран намеренно: поле repository в манифесте есть,
+  // и падение сборки без него — защита от его случайной потери
+  [vsce, 'package', '--no-dependencies', '--out', join('..', OUT)],
   { cwd: STAGE, stdio: 'inherit' },
 );
 
