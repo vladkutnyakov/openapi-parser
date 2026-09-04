@@ -30,6 +30,8 @@ The editor reads the spec itself, so there is no CORS to fight and no dev server
 
 The panel follows your editor theme, including syntax highlighting colors, and copying uses the VSCode clipboard.
 
+**Russian and English.** The interface picks up your editor's display language and can be switched at any time with the `RU`/`EN` button; the choice is remembered. Comments in the generated code stay English either way — that code is meant to land in your repository.
+
 ## Requirements
 
 VSCode 1.90 or newer. No other dependencies — everything runs locally, and nothing is sent anywhere.
