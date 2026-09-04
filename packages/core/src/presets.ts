@@ -123,83 +123,6 @@ const DEFAULT_PRESET_CODE_EN = `// The default rules already apply — this code
   },
 })`;
 
-/** Конвенции конкретного бэкенда: | null почти везде, строковые enum как string, без ; */
-const PROJECT_CODE_RU = `// Конвенции проекта: в ответах необязательное поле — это | null,
-// а не ?; в body и query null допустим у любого поля, а ? отвечает только
-// за то, можно ли не передавать ключ. Строковые enum сводятся к string,
-// точек с запятой нет. Строгие только path-параметры — они всегда в URL.
-({
-  field(f) {
-    // не дублируем | null, если тип уже nullable
-    const withNull = t => (t.endsWith(' | null') ? t : t + ' | null')
-
-    if (f.source === 'response') {
-      // в ответах: необязательное поле получает | null вместо ?
-      return \`\${f.indent}\${f.key}: \${f.required ? f.type : withNull(f.type)}\`
-    }
-    if (f.source === 'path') {
-      // path-параметр всегда есть в URL и не может быть null
-      return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${f.type}\`
-    }
-    if (f.source === 'query') {
-      // query-параметры всегда допускают null
-      return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${withNull(f.type)}\`
-    }
-    // body: бэкенд принимает null в любом поле, ? — только у необязательных
-    return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${withNull(f.type)}\`
-  },
-
-  scalar(s) {
-    // строковый enum сводим к string (литералы остаются в комментарии)
-    if (s.enum && s.enum.every(v => typeof v === 'string')) return 'string'
-    if (s.type === 'integer') return 'number'
-  },
-
-  declaration(d) {
-    return d.isInterface
-      ? \`export interface \${d.name} \${d.body}\`
-      : \`export type \${d.name} = \${d.body}\`
-  },
-})`;
-
-const PROJECT_CODE_EN = `// Project conventions: in responses an optional field is | null,
-// not ?; in body and query null is allowed on any field, and ? only says
-// whether the key may be omitted. String enums collapse to string,
-// no semicolons. Only path params are strict — they are always in the URL.
-({
-  field(f) {
-    // don't duplicate | null if the type is already nullable
-    const withNull = t => (t.endsWith(' | null') ? t : t + ' | null')
-
-    if (f.source === 'response') {
-      // in responses: an optional field gets | null instead of ?
-      return \`\${f.indent}\${f.key}: \${f.required ? f.type : withNull(f.type)}\`
-    }
-    if (f.source === 'path') {
-      // a path param is always present in the URL and can't be null
-      return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${f.type}\`
-    }
-    if (f.source === 'query') {
-      // query params always allow null
-      return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${withNull(f.type)}\`
-    }
-    // body: the backend accepts null in any field, ? only on optional ones
-    return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${withNull(f.type)}\`
-  },
-
-  scalar(s) {
-    // a string enum collapses to string (the literals stay in the comment)
-    if (s.enum && s.enum.every(v => typeof v === 'string')) return 'string'
-    if (s.type === 'integer') return 'number'
-  },
-
-  declaration(d) {
-    return d.isInterface
-      ? \`export interface \${d.name} \${d.body}\`
-      : \`export type \${d.name} = \${d.body}\`
-  },
-})`;
-
 const MINIMAL_CODE_RU = `// Классический TS без комментариев: только типы, никаких JSDoc.
 ({
   docs() {
@@ -231,12 +154,6 @@ export function builtinPresets(locale: PresetLocale): Preset[] {
       id: DEFAULT_PRESET_ID,
       name: 'preset.classic.name',
       code: '',
-      builtin: true,
-    },
-    {
-      id: 'builtin:project',
-      name: 'preset.project.name',
-      code: ru ? PROJECT_CODE_RU : PROJECT_CODE_EN,
       builtin: true,
     },
     {

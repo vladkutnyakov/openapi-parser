@@ -224,36 +224,6 @@ describe('пресеты', () => {
     expect(builtinPresets('ru').map((p) => p.id)).toEqual(builtinPresets('en').map((p) => p.id));
   });
 
-  it('«Мой проект» возвращает конвенции проекта: | null, string-enum, без ;', () => {
-    const { hooks } = compileHooks(byId('builtin:project').code);
-    const out = gen('get /users/{id}', hooks);
-    expect(out).toContain('createdAt: string | null');
-    expect(out).toContain('export type UserStatus = string');
-    expect(out).not.toContain(';');
-  });
-
-  it('«Мой проект»: в body | null у всех полей, ? — только у необязательных', () => {
-    const { hooks } = compileHooks(byId('builtin:project').code);
-    // берём только блок body-DTO: в этом же выводе есть UserResponseDto,
-    // а у него required-поля по конвенции ответов остаются без | null
-    const out = gen('post /users', hooks);
-    const start = out.indexOf('export interface UserCreateDto');
-    const body = out.slice(start, out.indexOf('\n}', start));
-    expect(body).toContain('name: string | null'); // required — без ?, но с null
-    expect(body).toContain('email?: string | null');
-    expect(body).toContain('roleCodes?: string[] | null');
-    expect(body).not.toContain('name: string\n');
-  });
-
-  it('«Мой проект»: query — всегда | null, path — строгий', () => {
-    const { hooks } = compileHooks(byId('builtin:project').code);
-    const out = gen('get /users/{id}', hooks);
-    expect(out).toContain('includeRoles?: boolean | null');
-    // path-параметр всегда есть в URL
-    expect(out).toContain('id: number\n');
-    expect(out).not.toContain('id: number | null');
-  });
-
   it('«Без комментариев» убирает JSDoc, но оставляет классические типы', () => {
     const { hooks } = compileHooks(byId('builtin:minimal').code);
     const out = gen('get /users/{id}', hooks);

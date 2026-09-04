@@ -100,7 +100,6 @@ export const en: Messages = {
 
   // ---------------------------------------------------------------- имена пресетов
   'preset.classic.name': 'Classic TS (default)',
-  'preset.project.name': 'My project',
   'preset.minimal.name': 'No comments',
   'preset.modifiedSuffix': (p) => `${p.name} (modified)`,
   'preset.copySuffix': (p) => `${p.name} (copy)`,

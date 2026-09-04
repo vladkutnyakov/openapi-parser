@@ -113,7 +113,6 @@ export const ru = {
 
   // ---------------------------------------------------------------- имена пресетов
   'preset.classic.name': 'Классический TS (по умолчанию)',
-  'preset.project.name': 'Мой проект',
   'preset.minimal.name': 'Без комментариев',
   'preset.modifiedSuffix': (p: { name: string }) => `${p.name} (изменённый)`,
   'preset.copySuffix': (p: { name: string }) => `${p.name} (копия)`,
