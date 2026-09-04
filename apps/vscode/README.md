@@ -22,7 +22,9 @@ The editor reads the spec itself, so there is no CORS to fight and no dev server
 
 ## Features
 
-**Generation rules.** Your backend has conventions — optional fields as `| null`, string enums collapsed to `string`, no semicolons. Instead of hardcoding one house style, the generator exposes JS hooks (`field`, `scalar`, `typeName`, `declaration`, `docs`) you can override in the ⚙ editor, with a live preview of the current endpoint. Presets survive editor restarts, and broken rules degrade to the defaults instead of breaking generation.
+**Generation rules.** Your backend has conventions — optional fields as `| null`, string enums collapsed to `string`, no semicolons. Instead of hardcoding one house style, the generator exposes JS hooks (`field`, `scalar`, `typeName`, `declaration`, `docs`) you can override in the ⚙ editor, with a live preview of the current endpoint. Presets survive editor restarts, and broken rules degrade to the defaults instead of breaking generation. Rules can also be loaded from and saved to a `.js` file, so your team's house style can live in the repository next to the code it shapes.
+
+**Readable output.** Types come out grouped into collapsible sections — path parameters, query parameters, request body, responses, DTOs — each with its own copy button, so an endpoint pulling in a dozen transitive DTOs is not a wall of code. Ctrl+F searches the output: every match is highlighted, Enter and Shift+Enter step through them, and a match inside a collapsed section expands it.
 
 **Type comparison.** Paste a type from your codebase and the panel shows, field by field, where it drifted from the contract: missing field, extra field, different type, different optionality. The comparison is semantic — field order, formatting, semicolons, quote style and union member order are not differences. Optionality is strict, though: `?:` and `| null` are not the same thing.
 

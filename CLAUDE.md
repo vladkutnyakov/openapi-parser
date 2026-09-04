@@ -293,7 +293,7 @@ Ctrl+F в панели вывода: строка поиска, подсветк
 
 ## Тесты
 
-`packages/core/tests/` — generator, hooks, type-diff, url-state, spec-loader, recent-sources, find-matches; `packages/ui/tests/` — паритет словарей локализации; `apps/vscode/tests/` — разбор тем VSCode и полнота `package.nls*.json` (всего 185 тестов). Логика в `core` тестируется напрямую, компоненты не тестируются.
+`packages/core/tests/` — generator, hooks, type-diff, url-state, spec-loader, recent-sources, find-matches; `packages/ui/tests/` — паритет словарей локализации; `apps/vscode/tests/` — разбор тем VSCode и полнота `package.nls*.json` (всего 182 теста). Логика в `core` тестируется напрямую, компоненты не тестируются.
 
 Для генератора есть фикстура `packages/core/tests/fixtures/sample-spec.json` в стиле типичного Spring-бэкенда: `$ref`, enum, `allOf`, `nullable`, вложенные DTO, циклическая ссылка, DTO одновременно в body и response.
 
