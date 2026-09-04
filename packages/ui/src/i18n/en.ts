@@ -47,6 +47,12 @@ export const en: Messages = {
   'output.compareTitle': 'Compare with your type from the code',
   'output.compare': 'Compare',
   'output.resize': 'Drag to resize',
+  'output.findPlaceholder': 'Find in types',
+  'output.findPrev': 'Previous match (Shift+Enter)',
+  'output.findNext': 'Next match (Enter)',
+  'output.findClose': 'Close find (Esc)',
+  'output.findNoResults': 'No results',
+  'output.findCounter': (p) => `${p.current} / ${p.total}`,
   'output.generationError': (p) => `// Generation error: ${p.message}`,
 
   // ---------------------------------------------------------------- сравнение типов

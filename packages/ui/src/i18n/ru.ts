@@ -54,6 +54,14 @@ export const ru = {
   'output.compareTitle': 'Сравнить с вашим типом из кода',
   'output.compare': 'Сравнить',
   'output.resize': 'Потяните, чтобы изменить ширину',
+  'output.findPlaceholder': 'Найти в типах',
+  'output.findPrev': 'Предыдущее совпадение (Shift+Enter)',
+  'output.findNext': 'Следующее совпадение (Enter)',
+  'output.findClose': 'Закрыть поиск (Esc)',
+  'output.findNoResults': 'Нет совпадений',
+  // Параметризован, хотя «3 / 17» выглядит нейтрально: захардкоженный формат в
+  // шаблоне был бы пользовательской строкой в компоненте, а перевод может захотеть «3 из 17».
+  'output.findCounter': (p: { current: number; total: number }) => `${p.current} / ${p.total}`,
   'output.generationError': (p: { message: string }) => `// Ошибка генерации: ${p.message}`,
 
   // ---------------------------------------------------------------- сравнение типов

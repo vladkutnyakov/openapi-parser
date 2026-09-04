@@ -7,6 +7,7 @@ import HooksEditor from './components/HooksEditor.vue';
 import { useSpec } from './composables/useSpec';
 import { useUrlState } from './composables/useUrlState';
 import { useHooks } from './composables/useHooks';
+import { useHooksEditor } from './composables/useHooksEditor';
 import { useLocale } from './composables/useLocale';
 import { generateBlocksWithErrors, type EndpointEntry, type GeneratedBlock } from '@openapi-parser/core';
 import { hostStorage } from './host';
@@ -41,7 +42,9 @@ const selected = computed<EndpointEntry | null>(
 
 // правила генерации задаёт пользователь (пресеты хуков)
 const { hooks } = useHooks();
-const hooksEditorOpen = ref(false);
+// открытость редактора правил лежит в composable: о ней знает и TypeOutput — он не
+// должен перехватывать Ctrl+F, пока модалка поверх всего
+const { open: hooksEditorOpen } = useHooksEditor();
 
 const blocks = computed<GeneratedBlock[]>(() => {
   if (!spec.value || !selected.value) return [];
@@ -147,6 +150,9 @@ function startResize(e: PointerEvent) {
   --diff-del-bg: rgba(248, 81, 73, 0.17);
   --hover: #1f2733;
   --selected: #26334a;
+  /* поиск по типам: фон полупрозрачный, чтобы цвета токенов hljs просвечивали сквозь него */
+  --find-match-bg: rgba(255, 214, 0, 0.28);
+  --find-match-active-bg: rgba(255, 145, 0, 0.55);
   /* токены подсветки кода (в духе github-dark) */
   --hl-keyword: #ff7b72;
   --hl-string: #a5d6ff;
@@ -170,6 +176,9 @@ function startResize(e: PointerEvent) {
   --diff-del-bg: #ffebe9;
   --hover: #eaeef2;
   --selected: #ddf4ff;
+  /* здесь наоборот непрозрачные: полупрозрачный жёлтый на белом фоне выцветает */
+  --find-match-bg: #fff2a8;
+  --find-match-active-bg: #ffab40;
   /* токены подсветки (в духе github-light) */
   --hl-keyword: #cf222e;
   --hl-string: #0a3069;
@@ -220,6 +229,25 @@ body {
 }
 .hljs-built_in {
   color: var(--hl-builtin);
+}
+/*
+ * Подсветка совпадений поиска по типам. Рисуется CSS Custom Highlight API поверх
+ * существующих текстовых узлов, поэтому разметка hljs не трогается вовсе и
+ * совпадение спокойно пересекает границы <span> токенов.
+ *
+ * Правила обязаны жить в глобальном блоке: scoped-стили работают через дописывание
+ * атрибута [data-v-*], а подсветка — не элемент, дописывать не к чему, и такое
+ * правило не совпало бы никогда.
+ *
+ * Только background-color: ::highlight() поддерживает узкий набор свойств, и
+ * text-decoration с text-shadow из него Firefox игнорирует — различие активного
+ * совпадения и остальных должно держаться на фоне.
+ */
+::highlight(openapi-find) {
+  background-color: var(--find-match-bg);
+}
+::highlight(openapi-find-active) {
+  background-color: var(--find-match-active-bg);
 }
 </style>
 

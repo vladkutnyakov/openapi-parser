@@ -24,6 +24,15 @@ body.vscode-high-contrast-light {
   --selected: var(--vscode-list-activeSelectionBackground);
 
   /*
+   * Поиск по типам ищет теми же цветами, что и поиск в редакторе.
+   * Соответствие перекрёстное к именам, и перепутать тут легко: у VSCode
+   * findMatchBackground — это ТЕКУЩЕЕ совпадение, а findMatchHighlightBackground —
+   * ОСТАЛЬНЫЕ. Фолбэки нужны high-contrast темам: они этих цветов могут не задавать.
+   */
+  --find-match-bg: var(--vscode-editor-findMatchHighlightBackground, var(--vscode-editor-selectionBackground));
+  --find-match-active-bg: var(--vscode-editor-findMatchBackground, var(--vscode-editor-selectionHighlightBackground));
+
+  /*
    * Цвета подсветки сюда НЕ пишем: точные цвета токенов активной темы
    * (`tokenColors`) в webview переменными не пробрасываются — их читает
    * extension host и вкладывает блоком <style> прямо в HTML панели
