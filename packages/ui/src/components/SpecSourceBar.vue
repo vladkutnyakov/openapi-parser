@@ -3,11 +3,14 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { filterRecentSources, type OpenApiSpec, type RecentSource } from '@openapi-parser/core';
 import type { AuthPrompt } from '../composables/useSpec';
 import { useTheme } from '../composables/useTheme';
+import { useLocale } from '../composables/useLocale';
 import { getHost } from '../host';
+import { t } from '../i18n';
 
 const model = defineModel<string>({ required: true });
 
 const { theme, toggle } = useTheme();
+const { locale, toggle: toggleLocale } = useLocale();
 const host = getHost();
 
 const props = defineProps<{
@@ -194,7 +197,7 @@ function highlight(text: string): { text: string; match: boolean }[] {
           aria-autocomplete="list"
           :aria-expanded="open"
           :aria-activedescendant="activeId"
-          placeholder="Путь к файлу (C:\specs\api.json) или URL (http://backend/v3/api-docs)"
+          :placeholder="t('spec.placeholder')"
           @focus="openList"
           @keydown.enter.prevent="submit"
           @keydown.down.prevent="move(1)"
@@ -219,12 +222,12 @@ function highlight(text: string): { text: string; match: boolean }[] {
                 class="combo__rename-input"
                 type="text"
                 spellcheck="false"
-                placeholder="Название спеки"
+                :placeholder="t('spec.namePlaceholder')"
                 @keydown.enter.prevent="commitRename"
                 @keydown.esc.prevent="cancelRename"
               />
-              <button class="combo__icon" title="Сохранить название" @click="commitRename">✓</button>
-              <button class="combo__icon" title="Отмена" @click="cancelRename">✕</button>
+              <button class="combo__icon" :title="t('spec.saveName')" @click="commitRename">✓</button>
+              <button class="combo__icon" :title="t('spec.cancel')" @click="cancelRename">✕</button>
             </template>
             <template v-else>
               <button class="combo__pick" :title="item.source" @click="pick(item.source)">
@@ -237,14 +240,14 @@ function highlight(text: string): { text: string; match: boolean }[] {
               </button>
               <button
                 class="combo__icon"
-                :title="item.name ? 'Переименовать' : 'Задать название'"
+                :title="item.name ? t('spec.rename') : t('spec.setName')"
                 @click="startRename(item)"
               >
                 ✎
               </button>
               <button
                 class="combo__icon combo__icon--danger"
-                title="Убрать из истории"
+                :title="t('spec.forget')"
                 @click="forget(item.source)"
               >
                 ✕
@@ -254,14 +257,21 @@ function highlight(text: string): { text: string; match: boolean }[] {
         </ul>
       </div>
       <button class="load-btn" :disabled="loading" @click="emit('load')">
-        {{ loading ? 'Загрузка…' : spec ? 'Обновить' : 'Загрузить' }}
+        {{ loading ? t('load.loading') : spec ? t('load.refresh') : t('load.load') }}
       </button>
-      <button class="theme-btn" title="Правила генерации типов" @click="emit('openRules')">⚙</button>
+      <button class="theme-btn" :title="t('rules.open')" @click="emit('openRules')">⚙</button>
+      <!--
+        Язык переключается в обеих оболочках, в отличие от темы: язык интерфейса
+        VSCode может не совпадать с тем, на котором человек хочет читать типы.
+      -->
+      <button class="theme-btn lang-btn" :title="t('locale.switch')" @click="toggleLocale">
+        {{ locale === 'ru' ? 'RU' : 'EN' }}
+      </button>
       <!-- в расширении тему задаёт сам VSCode — свой тоггл рядом с ней выглядел бы рассинхроном -->
       <button
         v-if="host.kind === 'web'"
         class="theme-btn"
-        :title="theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'"
+        :title="theme === 'dark' ? t('theme.light') : t('theme.dark')"
         @click="toggle"
       >
         {{ theme === 'dark' ? '☀️' : '🌙' }}
@@ -276,14 +286,15 @@ function highlight(text: string): { text: string; match: boolean }[] {
           :href="authPrompt.loginUrl"
           @click.prevent="host.openExternal(authPrompt.loginUrl)"
         >
-          Войти ↗
+          {{ t('auth.login') }}
         </a>
-        — после входа скопируйте заголовок <code>Cookie</code> из DevTools → Network → любой
-        запрос к Swagger и вставьте сюда.
-        <template v-if="host.kind === 'web'">
-          Кука хранится только в памяти дев-сервера до его перезапуска.
-        </template>
-        <template v-else>Кука хранится в защищённом хранилище VSCode.</template>
+        <!--
+          Предложение разрезано ровно по <code>: подставлять разметку параметром
+          значило бы гонять v-html. Пробелы по краям ключей несущие — Vue схлопывает
+          пробелы вокруг {{ }}, поэтому они живут внутри самих строк словаря.
+        -->
+        {{ t('auth.hintBefore') }}<code>Cookie</code>{{ t('auth.hintAfter') }}
+        {{ host.kind === 'web' ? t('auth.storageWeb') : t('auth.storageVscode') }}
       </p>
       <div class="row">
         <input
@@ -291,16 +302,17 @@ function highlight(text: string): { text: string; match: boolean }[] {
           class="source-input"
           type="text"
           spellcheck="false"
-          placeholder="KEYCLOAK_SESSION=...; JSESSIONID=..."
+          :placeholder="t('auth.cookiePlaceholder')"
           @keydown.enter="submitCookie"
         />
         <button class="load-btn" :disabled="loading || !cookie.trim()" @click="submitCookie">
-          Сохранить и повторить
+          {{ t('auth.submit') }}
         </button>
       </div>
     </div>
     <p v-else-if="spec" class="status status--ok">
-      {{ spec.info?.title ?? 'Спека' }}<template v-if="spec.info?.version"> v{{ spec.info.version }}</template>
+      <!-- title — из самой спеки, то есть текст бэкенда: не переводится -->
+      {{ spec.info?.title ?? t('spec.untitled') }}<template v-if="spec.info?.version"> v{{ spec.info.version }}</template>
       · OpenAPI {{ spec.openapi }}
     </p>
   </header>
@@ -361,6 +373,12 @@ function highlight(text: string): { text: string; match: boolean }[] {
 .theme-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+/* текстовая подпись вместо символа: флаг для языка был бы неверен */
+.lang-btn {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
 }
 /* обёртка нужна как контекст позиционирования выпадающего списка;
    строку ввода она занимает целиком, поэтому flex-рост забирает на себя */

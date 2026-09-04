@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import type { EndpointEntry } from '@openapi-parser/core';
+import { t } from '../i18n';
 
 const props = defineProps<{
   endpoints: EndpointEntry[];
@@ -52,15 +53,15 @@ watch(
         class="search"
         type="text"
         spellcheck="false"
-        placeholder="Поиск: /users/{id}, operationId…"
+        :placeholder="t('endpoints.search')"
       />
       <select v-model="methodFilter" class="method-filter">
         <option v-for="m in methods" :key="m" :value="m">{{ m }}</option>
       </select>
     </div>
 
-    <p v-if="!endpoints.length" class="empty">Загрузите спеку, чтобы увидеть эндпоинты</p>
-    <p v-else-if="!filtered.length" class="empty">Ничего не найдено</p>
+    <p v-if="!endpoints.length" class="empty">{{ t('endpoints.empty') }}</p>
+    <p v-else-if="!filtered.length" class="empty">{{ t('endpoints.notFound') }}</p>
 
     <ul v-else ref="listRef" class="items">
       <li v-for="e in filtered" :key="e.id">

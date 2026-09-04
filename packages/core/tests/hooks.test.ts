@@ -4,7 +4,12 @@ import type { OpenApiSpec } from '../src/openapi-types';
 import { buildEndpointIndex } from '../src/endpoint-index';
 import { generateBlocksWithErrors, generateForEndpoint } from '../src/generator';
 import { compileHooks, type GeneratorHooks } from '../src/hooks';
-import { BUILTIN_PRESETS, DEFAULT_PRESET_CODE } from '../src/presets';
+import {
+  builtinPresets,
+  defaultPresetCode,
+  DEFAULT_PRESET_ID,
+  type PresetLocale,
+} from '../src/presets';
 
 const spec = sampleSpec as unknown as OpenApiSpec;
 const index = buildEndpointIndex(spec);
@@ -37,24 +42,29 @@ describe('compileHooks', () => {
     expect(compileHooks('   \n  ')).toEqual({ hooks: {}, error: null });
   });
 
-  it('синтаксическая ошибка → сообщение, приложение не падает', () => {
+  it('синтаксическая ошибка → код ошибки, приложение не падает', () => {
     const { hooks, error } = compileHooks('({ field(f) { return }');
-    expect(error).toMatch(/Ошибка в коде/);
+    expect(error?.code).toBe('hooks.compileFailed');
+    // сообщение движка JS едет параметром как есть — оно непереводимо
+    expect(error?.params?.message).toBeTruthy();
     expect(hooks).toEqual({});
   });
 
   it('не-объект → ошибка', () => {
-    expect(compileHooks('42').error).toMatch(/объект/);
-    expect(compileHooks('null').error).toMatch(/объект/);
+    expect(compileHooks('42').error?.code).toBe('hooks.notAnObject');
+    expect(compileHooks('null').error?.code).toBe('hooks.notAnObject');
   });
 
-  it('хук не-функция → ошибка', () => {
-    expect(compileHooks('({ field: 5 })').error).toMatch(/должен быть функцией/);
+  it('хук не-функция → ошибка с именем хука', () => {
+    const { error } = compileHooks('({ field: 5 })');
+    expect(error?.code).toBe('hooks.notAFunction');
+    expect(error?.params?.name).toBe('field');
   });
 
   it('неизвестный ключ → предупреждение, известные хуки работают', () => {
     const { hooks, error } = compileHooks('({ field(f) { return f.key }, oops() {} })');
-    expect(error).toMatch(/Неизвестные хуки: oops/);
+    expect(error?.code).toBe('hooks.unknownKeys');
+    expect(String(error?.params?.keys)).toContain('oops');
     expect(typeof hooks.field).toBe('function');
   });
 });
@@ -162,11 +172,13 @@ describe('устойчивость к ошибкам в хуках', () => {
 });
 
 describe('пресеты', () => {
-  const byId = (id: string) => BUILTIN_PRESETS.find((p) => p.id === id)!;
+  // русская локаль как база для проверок конвенций: код у локалей одинаков
+  // по поведению, отличаются только комментарии
+  const byId = (id: string) => builtinPresets('ru').find((p) => p.id === id)!;
 
   it('«Классический TS» — первый в списке, пустой код, ровно поведение по умолчанию', () => {
-    const preset = BUILTIN_PRESETS[0];
-    expect(preset.id).toBe('builtin:classic');
+    const preset = builtinPresets('ru')[0];
+    expect(preset.id).toBe(DEFAULT_PRESET_ID);
     expect(preset.code).toBe('');
     const { hooks } = compileHooks(preset.code);
     expect(gen('get /users/{id}', hooks)).toBe(gen('get /users/{id}'));
@@ -178,17 +190,38 @@ describe('пресеты', () => {
     expect(out).toContain("export type UserStatus = 'ACTIVE' | 'BLOCKED' | 'DELETED';");
   });
 
-  it('образец DEFAULT_PRESET_CODE компилируется и воспроизводит поведение по умолчанию', () => {
-    const { hooks, error } = compileHooks(DEFAULT_PRESET_CODE);
-    expect(error).toBeNull();
-    expect(gen('get /users/{id}', hooks)).toBe(gen('get /users/{id}'));
-    expect(gen('post /users', hooks)).toBe(gen('post /users'));
+  // Инвариант: код-образец в редакторе не должен расходиться с реальными дефолтами —
+  // иначе документация в нём врёт. Проверяется на каждом языке отдельно.
+  describe.each<PresetLocale>(['ru', 'en'])('локаль %s', (locale) => {
+    it('образец defaultPresetCode компилируется и воспроизводит поведение по умолчанию', () => {
+      const { hooks, error } = compileHooks(defaultPresetCode(locale));
+      expect(error).toBeNull();
+      expect(gen('get /users/{id}', hooks)).toBe(gen('get /users/{id}'));
+      expect(gen('post /users', hooks)).toBe(gen('post /users'));
+    });
+
+    it('все встроенные пресеты компилируются без ошибок', () => {
+      for (const preset of builtinPresets(locale)) {
+        expect(compileHooks(preset.code).error, `пресет "${preset.id}"`).toBeNull();
+      }
+    });
   });
 
-  it('все встроенные пресеты компилируются без ошибок', () => {
-    for (const preset of BUILTIN_PRESETS) {
-      expect(compileHooks(preset.code).error, `пресет "${preset.name}"`).toBeNull();
+  // Главный страж перевода образцов: переводятся только комментарии. Если правка
+  // залезла в поведение, вывод разойдётся — и это поймается здесь, а не у пользователя.
+  it('пресеты дают одинаковый вывод на обоих языках', () => {
+    for (const preset of builtinPresets('en')) {
+      const ru = builtinPresets('ru').find((p) => p.id === preset.id)!;
+      const hooksEn = compileHooks(preset.code).hooks;
+      const hooksRu = compileHooks(ru.code).hooks;
+      for (const id of ['get /users/{id}', 'post /users']) {
+        expect(gen(id, hooksRu), `${preset.id} @ ${id}`).toBe(gen(id, hooksEn));
+      }
     }
+  });
+
+  it('набор id встроенных пресетов не зависит от языка', () => {
+    expect(builtinPresets('ru').map((p) => p.id)).toEqual(builtinPresets('en').map((p) => p.id));
   });
 
   it('«Мой проект» возвращает конвенции проекта: | null, string-enum, без ;', () => {

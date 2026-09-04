@@ -42,6 +42,12 @@ await cp('assets', join(STAGE, 'assets'), {
 // Витрина Marketplace: README — описание на странице, CHANGELOG и LICENSE — отдельные
 // вкладки. Без .catch: пропавший файл должен ронять сборку, а не выпускать пакет
 // с пустой вкладкой лицензии. LICENSE лежит в корне монорепы — он общий на весь проект.
+// Локализация манифеста: без этих файлов %ключи% в package.json показались бы
+// пользователю как есть. .vscodeignore тут ни при чём — vsce запускается из stage/,
+// куда попадает только то, что скопировано явно.
+await cp('package.nls.json', join(STAGE, 'package.nls.json'));
+await cp('package.nls.ru.json', join(STAGE, 'package.nls.ru.json'));
+
 await cp('README.md', join(STAGE, 'README.md'));
 await cp('README-RU.md', join(STAGE, 'README-RU.md'));
 await cp('CHANGELOG.md', join(STAGE, 'CHANGELOG.md'));

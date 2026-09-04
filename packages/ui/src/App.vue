@@ -7,8 +7,15 @@ import HooksEditor from './components/HooksEditor.vue';
 import { useSpec } from './composables/useSpec';
 import { useUrlState } from './composables/useUrlState';
 import { useHooks } from './composables/useHooks';
+import { useLocale } from './composables/useLocale';
 import { generateBlocksWithErrors, type EndpointEntry, type GeneratedBlock } from '@openapi-parser/core';
 import { hostStorage } from './host';
+import { t } from './i18n';
+
+// Корень зовёт useLocale первым, хотя тоггл рисует SpecSourceBar: ленивая
+// инициализация должна отработать до того, как кто-то позовёт t() — в том числе
+// computed blocks ниже.
+useLocale();
 
 const {
   source,
@@ -41,7 +48,14 @@ const blocks = computed<GeneratedBlock[]>(() => {
   try {
     return generateBlocksWithErrors(spec.value, selected.value, hooks.value).blocks;
   } catch (e) {
-    return [{ name: null, code: `// Ошибка генерации: ${e instanceof Error ? e.message : String(e)}` }];
+    // В отличие от комментариев в сгенерированном коде, это сообщение никуда
+    // из панели не уезжает — поэтому переводится вместе с интерфейсом.
+    return [
+      {
+        name: null,
+        code: t('output.generationError', { message: e instanceof Error ? e.message : String(e) }),
+      },
+    ];
   }
 });
 
@@ -111,7 +125,7 @@ function startResize(e: PointerEvent) {
         :selected-id="selectedId"
         @select="(e) => (selectedId = e.id)"
       />
-      <div class="resizer" title="Потяните, чтобы изменить ширину" @pointerdown.prevent="startResize" />
+      <div class="resizer" :title="t('output.resize')" @pointerdown.prevent="startResize" />
       <TypeOutput :blocks="blocks" />
     </div>
     <HooksEditor v-if="hooksEditorOpen" :spec="spec" :entry="selected" @close="hooksEditorOpen = false" />

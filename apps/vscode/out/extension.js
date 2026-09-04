@@ -41,6 +41,7 @@ var vscode3 = __toESM(require("vscode"));
 
 // shared/protocol.ts
 var STATE_GLOBAL = "__OPENAPI_PARSER_STATE__";
+var ENV_GLOBAL = "__OPENAPI_PARSER_ENV__";
 
 // extension/src/spec-service.ts
 var vscode = __toESM(require("vscode"));
@@ -48,6 +49,16 @@ var import_node_path = require("node:path");
 
 // ../../packages/core/src/node/spec-loader.ts
 var import_promises = require("node:fs/promises");
+
+// ../../packages/core/src/errors.ts
+function technicalError(e) {
+  return {
+    code: "technical",
+    params: { message: e instanceof Error ? e.message : String(e) }
+  };
+}
+
+// ../../packages/core/src/node/spec-loader.ts
 function originOf(url) {
   try {
     return new URL(url).origin;
@@ -57,7 +68,7 @@ function originOf(url) {
 }
 async function loadSpecFromSource(source, deps) {
   const target = source.trim();
-  if (!target) return { kind: "error", status: 400, error: "\u041D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0441\u043F\u0435\u043A\u0438" };
+  if (!target) return { kind: "error", status: 400, code: "source.empty" };
   const readFile = deps.readFile ?? ((path) => (0, import_promises.readFile)(path, "utf-8"));
   const doFetch = deps.fetchImpl ?? fetch;
   let text;
@@ -70,16 +81,12 @@ async function loadSpecFromSource(source, deps) {
       text = await readFile(target);
     }
   } catch (e) {
-    return { kind: "error", status: 500, error: e instanceof Error ? e.message : String(e) };
+    return { kind: "error", status: 500, ...technicalError(e) };
   }
   try {
     return { kind: "ok", spec: JSON.parse(text) };
   } catch {
-    return {
-      kind: "error",
-      status: 422,
-      error: "\u0421\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u043F\u043E \u044D\u0442\u043E\u043C\u0443 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0443 \u2014 \u043D\u0435 \u0432\u0430\u043B\u0438\u0434\u043D\u044B\u0439 JSON"
-    };
+    return { kind: "error", status: 422, code: "source.notJson" };
   }
 }
 async function fetchSpecText(source, doFetch, getCookie) {
@@ -94,7 +101,7 @@ async function fetchSpecText(source, doFetch, getCookie) {
   if (redirectedAway || r.status === 401 || r.status === 403) {
     return {
       kind: "needs-auth",
-      error: "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0442\u0440\u0435\u0431\u0443\u0435\u0442 \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u0438",
+      code: "source.needsAuth",
       loginUrl: location || source,
       origin
     };
@@ -103,14 +110,15 @@ async function fetchSpecText(source, doFetch, getCookie) {
     return {
       kind: "error",
       status: 502,
-      error: `\u0421\u0435\u0440\u0432\u0435\u0440 \u0441\u043F\u0435\u043A\u0438 \u043E\u0442\u0432\u0435\u0442\u0438\u043B ${r.status} ${r.statusText}`
+      code: "source.serverStatus",
+      params: { status: r.status, statusText: r.statusText }
     };
   }
   const text = await r.text();
   if (!/json/i.test(contentType) && text.trimStart().startsWith("<")) {
     return {
       kind: "needs-auth",
-      error: "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0432\u0435\u0440\u043D\u0443\u043B HTML \u0432\u043C\u0435\u0441\u0442\u043E JSON \u2014 \u043F\u043E\u0445\u043E\u0436\u0435, \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044F",
+      code: "source.needsAuthHtml",
       loginUrl: source,
       origin
     };
@@ -132,13 +140,14 @@ var SpecService = class {
     if (outcome.kind === "needs-auth") {
       return {
         ok: false,
-        error: outcome.error,
+        code: outcome.code,
+        params: outcome.params,
         needsAuth: true,
         loginUrl: outcome.loginUrl,
         origin: outcome.origin
       };
     }
-    return { ok: false, error: outcome.error };
+    return { ok: false, code: outcome.code, params: outcome.params };
   }
   /** Кука лежит в SecretStorage и в webview не возвращается никогда. */
   async saveCookie(origin, cookie) {
@@ -443,9 +452,13 @@ var SpecPanel = class _SpecPanel {
     const nonce = makeNonce();
     const snapshot = this.readState();
     const state = JSON.stringify(snapshot).replace(/</g, "\\u003c");
+    const env2 = {
+      locale: vscode3.env.language.toLowerCase().startsWith("ru") ? "ru" : "en"
+    };
+    const envJson = JSON.stringify(env2).replace(/</g, "\\u003c");
     const highlight = highlightStyle();
     return `<!doctype html>
-<html lang="ru">
+<html lang="${env2.locale}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -469,7 +482,7 @@ var SpecPanel = class _SpecPanel {
   </head>
   <body>
     <div id="app"></div>
-    <script nonce="${nonce}">window.${STATE_GLOBAL} = ${state};</script>
+    <script nonce="${nonce}">window.${STATE_GLOBAL} = ${state}; window.${ENV_GLOBAL} = ${envJson};</script>
     <script type="module" nonce="${nonce}" src="${script}"></script>
   </body>
 </html>`;

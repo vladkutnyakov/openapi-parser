@@ -17,17 +17,19 @@ export class SpecService {
       getCookie: (origin) => this.secrets.get(SECRET_PREFIX + origin),
     });
 
+    // по проводу едет код ошибки, а не текст: extension host словаря не видит
     if (outcome.kind === 'ok') return { ok: true, spec: outcome.spec };
     if (outcome.kind === 'needs-auth') {
       return {
         ok: false,
-        error: outcome.error,
+        code: outcome.code,
+        params: outcome.params,
         needsAuth: true,
         loginUrl: outcome.loginUrl,
         origin: outcome.origin,
       };
     }
-    return { ok: false, error: outcome.error };
+    return { ok: false, code: outcome.code, params: outcome.params };
   }
 
   /** Кука лежит в SecretStorage и в webview не возвращается никогда. */

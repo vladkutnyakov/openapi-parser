@@ -69,11 +69,18 @@ export interface ErrorResponse {
 
 export type HostResponse = ResultResponse | ErrorResponse;
 
-/** Полезная нагрузка ответа на loadSpec — совпадает с SpecLoadResult в ui */
+/**
+ * Полезная нагрузка ответа на loadSpec — совпадает с SpecLoadResult в ui.
+ *
+ * `code` намеренно типизирован как string, а не SpecErrorCode: этот файл общий
+ * для двух сборок (esbuild и Vite), и тащить в его граф типы core незачем.
+ * Сужение до кода происходит в bridge.ts на стороне ui.
+ */
 export interface LoadSpecPayload {
   ok: boolean;
   spec?: unknown;
-  error?: string;
+  code?: string;
+  params?: Record<string, string | number>;
   needsAuth?: boolean;
   loginUrl?: string;
   origin?: string;
@@ -81,6 +88,18 @@ export interface LoadSpecPayload {
 
 /** Имя глобальной переменной со снапшотом состояния, который host кладёт в HTML */
 export const STATE_GLOBAL = '__OPENAPI_PARSER_STATE__';
+
+/**
+ * Язык редактора (vscode.env.language). Едет отдельным глобалом, а не в снапшоте
+ * состояния: это окружение, а не сохранённый выбор пользователя. В globalState его
+ * класть нельзя — там лежит ключ openapi-parser:locale с ручным переопределением,
+ * и язык хоста молча затёр бы его при первом запуске.
+ */
+export const ENV_GLOBAL = '__OPENAPI_PARSER_ENV__';
+
+export interface EnvSnapshot {
+  locale: 'ru' | 'en';
+}
 
 /**
  * Цвета подсветки синтаксиса, вынутые из активной темы VSCode. Ключи совпадают

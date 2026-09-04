@@ -24,12 +24,17 @@ describe('buildEndpointIndex', () => {
     expect(index.find((e) => e.id === 'get /users')?.operationId).toBe('getUsers');
   });
 
-  it('отклоняет Swagger 2.0 с понятной ошибкой', () => {
-    expect(() => buildEndpointIndex({ swagger: '2.0' })).toThrow(/Swagger 2\.0/);
+  it('отклоняет Swagger 2.0 с кодом и версией в параметрах', () => {
+    // версия — данные из самой спеки, поэтому едет параметром, а не внутри текста
+    expect(() => buildEndpointIndex({ swagger: '2.0' })).toThrow(
+      expect.objectContaining({ code: 'spec.swaggerUnsupported', params: { version: '2.0' } }),
+    );
   });
 
   it('отклоняет не-OpenAPI JSON', () => {
-    expect(() => buildEndpointIndex({})).toThrow(/openapi/);
+    expect(() => buildEndpointIndex({})).toThrow(
+      expect.objectContaining({ code: 'spec.notOpenApi' }),
+    );
   });
 });
 
@@ -168,10 +173,11 @@ describe('generateForEndpoint: разное', () => {
     expect(code).toContain('details?: Record<string, string>;');
   });
 
-  it('ответ без тела — только комментарий', () => {
+  it('ответ без тела — только комментарий, всегда по-английски', () => {
     const code = gen('DELETE', '/users/{id}');
     expect(code).toContain('// 204');
-    expect(code).toContain('без тела ответа');
+    // сгенерированный код уезжает в чужой репозиторий: язык интерфейса на него не влияет
+    expect(code).toContain('no response body');
     expect(code).not.toContain('Response204 =');
   });
 

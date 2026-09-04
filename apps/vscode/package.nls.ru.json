@@ -1,0 +1,7 @@
+{
+  "extension.description": "Генерация TypeScript-типов по эндпоинту OpenAPI 3.x — параметры, тело, ответы и все задействованные DTO",
+  "command.open.title": "OpenAPI Types Tools: открыть панель",
+  "viewsContainer.title": "OpenAPI Types Tools",
+  "view.launch.name": "Панель",
+  "viewsWelcome.contents": "Генерация TypeScript-типов по эндпоинту OpenAPI 3.x.\n[Открыть панель](command:openapiParser.open)"
+}

@@ -8,6 +8,7 @@ import {
   type FieldDiff,
 } from '@openapi-parser/core';
 import { hostStorage } from '../host';
+import { t } from '../i18n';
 
 const props = defineProps<{
   specTypeName: string;
@@ -66,6 +67,11 @@ interface Row {
   detail: string;
 }
 
+// Подпись «необязательное/обязательное» — отдельным ключом, а не тернарником
+// внутри шаблонной строки: иначе фразу нельзя перевести целиком, порядок слов
+// у языков разный.
+const optionality = (optional: boolean) => (optional ? t('diff.optional') : t('diff.required'));
+
 const rows = computed<Row[]>(() =>
   (diffs.value ?? []).map((d) => {
     switch (d.kind) {
@@ -74,28 +80,33 @@ const rows = computed<Row[]>(() =>
           kind: d.kind,
           marker: MARKERS[d.kind],
           main: `${d.field}${d.expected!.optional ? '?' : ''}: ${d.expected!.type}`,
-          detail: 'есть в спеке, отсутствует у вас',
+          detail: t('diff.missing'),
         };
       case 'extra':
         return {
           kind: d.kind,
           marker: MARKERS[d.kind],
           main: `${d.field}${d.actual!.optional ? '?' : ''}: ${d.actual!.type}`,
-          detail: 'есть у вас, нет в спеке',
+          detail: t('diff.extra'),
         };
       case 'type-mismatch':
+        // типы в main и в параметрах — текст из спеки и из кода пользователя,
+        // он не переводится никогда
         return {
           kind: d.kind,
           marker: MARKERS[d.kind],
           main: d.field,
-          detail: `в спеке: ${d.expected!.type} · у вас: ${d.actual!.type}`,
+          detail: t('diff.typeMismatch', { expected: d.expected!.type, actual: d.actual!.type }),
         };
       case 'optionality':
         return {
           kind: d.kind,
           marker: MARKERS[d.kind],
           main: d.field,
-          detail: `в спеке ${d.expected!.optional ? 'необязательное (?)' : 'обязательное'}, у вас ${d.actual!.optional ? 'необязательное (?)' : 'обязательное'}`,
+          detail: t('diff.optionalityMismatch', {
+            expected: optionality(d.expected!.optional),
+            actual: optionality(d.actual!.optional),
+          }),
         };
       default:
         return { kind: d.kind, marker: MARKERS[d.kind], main: d.field, detail: '' };
@@ -108,18 +119,18 @@ const rows = computed<Row[]>(() =>
   <div class="diff-panel">
     <div class="panel-head">
       <span class="panel-title">
-        Сравнение: <code>{{ specTypeName }}</code>
+        {{ t('diff.title') }}<code>{{ specTypeName }}</code>
       </span>
       <div class="head-actions">
         <div class="mode-switch">
           <button :class="{ 'mode-btn--active': mode === 'fields' }" class="mode-btn" @click="setMode('fields')">
-            По полям
+            {{ t('diff.modeFields') }}
           </button>
           <button :class="{ 'mode-btn--active': mode === 'lines' }" class="mode-btn" @click="setMode('lines')">
-            Diff
+            {{ t('diff.modeLines') }}
           </button>
         </div>
-        <button class="close-btn" title="Закрыть" @click="emit('close')">✕</button>
+        <button class="close-btn" :title="t('diff.close')" @click="emit('close')">✕</button>
       </div>
     </div>
     <div class="panel-body">
@@ -127,17 +138,15 @@ const rows = computed<Row[]>(() =>
         v-model="userInput"
         class="user-input"
         spellcheck="false"
-        placeholder="Вставьте сюда ваш тип из кода (interface или type)"
+        :placeholder="t('diff.inputPlaceholder')"
       />
       <div class="result">
-        <p v-if="!userInput.trim()" class="hint">Слева — ваш тип, здесь появится дифф</p>
-        <p v-else-if="!userParsed" class="hint">
-          Не удалось распознать тип — вставьте interface, type или объектный литерал
-        </p>
-        <p v-else-if="!specParsed" class="hint">Тип из спеки не удалось разобрать для сравнения</p>
+        <p v-if="!userInput.trim()" class="hint">{{ t('diff.hintEmpty') }}</p>
+        <p v-else-if="!userParsed" class="hint">{{ t('diff.hintUnparsed') }}</p>
+        <p v-else-if="!specParsed" class="hint">{{ t('diff.hintSpecUnparsed') }}</p>
         <template v-else>
-          <p v-if="!hasDifferences" class="verdict verdict--ok">✓ Типы совпадают</p>
-          <p v-else class="verdict verdict--diff">Есть отличия:</p>
+          <p v-if="!hasDifferences" class="verdict verdict--ok">{{ t('diff.equal') }}</p>
+          <p v-else class="verdict verdict--diff">{{ t('diff.different') }}</p>
           <template v-if="mode === 'fields'">
             <div v-for="(row, i) in rows" :key="i" class="row" :class="`row--${row.kind}`">
               <span class="marker">{{ row.marker }}</span>

@@ -1,3 +1,4 @@
+import { technicalError, type ErrorParams, type SpecErrorCode } from '@openapi-parser/core';
 import type { HostBridge, SpecLoadResult } from '@openapi-parser/ui';
 
 /**
@@ -7,6 +8,9 @@ import type { HostBridge, SpecLoadResult } from '@openapi-parser/ui';
 export function createWebHost(): HostBridge {
   return {
     kind: 'web',
+
+    // navigator.language бывает 'ru-RU', 'ru', 'en-GB' — приводим к нашим двум
+    locale: navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en',
 
     async loadSpec(source: string): Promise<SpecLoadResult> {
       try {
@@ -20,21 +24,21 @@ export function createWebHost(): HostBridge {
         } catch {
           return {
             ok: false,
-            error: res.ok
-              ? 'Сервер вернул не JSON. Если открыта статическая сборка — запустите npm run dev или npm run preview'
-              : `Ошибка загрузки (${res.status} ${res.statusText})`,
+            // статус и statusText приходят от сервера — едут параметрами как есть
+            ...(res.ok
+              ? { code: 'source.notJsonResponse' as const }
+              : {
+                  code: 'source.httpError' as const,
+                  params: { status: res.status, statusText: res.statusText },
+                }),
           };
         }
         if (!res.ok) {
-          const body = data as {
-            error?: string;
-            loginUrl?: string;
-            origin?: string;
-            needsAuth?: boolean;
-          };
+          const body = data as Partial<SpecLoadResult>;
           return {
             ok: false,
-            error: body?.error || `Ошибка загрузки (${res.status})`,
+            code: body?.code ?? 'source.httpError',
+            params: body?.params ?? { status: res.status, statusText: res.statusText },
             needsAuth: body?.needsAuth,
             loginUrl: body?.loginUrl,
             origin: body?.origin,
@@ -42,7 +46,7 @@ export function createWebHost(): HostBridge {
         }
         return { ok: true, spec: data };
       } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        return { ok: false, ...technicalError(e) };
       }
     },
 
@@ -54,12 +58,15 @@ export function createWebHost(): HostBridge {
           body: JSON.stringify({ origin, cookie }),
         });
         if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as { error?: string } | null;
-          return { ok: false, error: body?.error || 'Не удалось сохранить куку' };
+          const body = (await res.json().catch(() => null)) as {
+            code?: SpecErrorCode;
+            params?: ErrorParams;
+          } | null;
+          return { ok: false, code: body?.code ?? 'source.cookieSaveFailed', params: body?.params };
         }
         return { ok: true };
       } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        return { ok: false, ...technicalError(e) };
       }
     },
 

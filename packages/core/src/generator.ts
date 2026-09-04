@@ -269,7 +269,9 @@ function renderResponses(
       const alias = declaration(ctx, name, 'response', body, false, []);
       blocks.push({ name, code: `${comment}\n${alias}` });
     } else {
-      blocks.push({ name: null, code: `${comment} — без тела ответа` });
+      // Комментарий уезжает в код, который пользователь вставляет к себе в репозиторий:
+      // он всегда английский и от языка интерфейса не зависит.
+      blocks.push({ name: null, code: `${comment} — no response body` });
     }
   }
   return blocks;

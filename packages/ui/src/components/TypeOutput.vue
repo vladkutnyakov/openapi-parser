@@ -5,6 +5,7 @@ import typescript from 'highlight.js/lib/languages/typescript';
 // стили токенов подсветки — свои, на CSS-переменных (см. App.vue), чтобы работали обе темы
 import { stripComments, type GeneratedBlock } from '@openapi-parser/core';
 import { getHost } from '../host';
+import { t } from '../i18n';
 import TypeDiffPanel from './TypeDiffPanel.vue';
 
 hljs.registerLanguage('typescript', typescript);
@@ -51,28 +52,28 @@ async function copy(text: string, key: string) {
 
 <template>
   <section class="type-output">
-    <p v-if="!blocks.length" class="empty">Выберите эндпоинт слева — здесь появятся TS-типы</p>
+    <p v-if="!blocks.length" class="empty">{{ t('output.empty') }}</p>
     <template v-else>
       <div class="scroll-area">
         <div class="toolbar">
-          <button class="copy-btn copy-btn--all" title="Копирует весь код без комментариев" @click="copy(allCode, '__all')">
-            {{ copiedKey === '__all' ? 'Скопировано ✓' : 'Копировать всё' }}
+          <button class="copy-btn copy-btn--all" :title="t('output.copyAllTitle')" @click="copy(allCode, '__all')">
+            {{ copiedKey === '__all' ? t('output.copied') : t('output.copyAll') }}
           </button>
         </div>
         <div class="blocks">
           <div v-for="(b, i) in view" :key="i" class="block">
             <div v-if="b.name && b.copy" class="block-head">
               <span class="block-name">{{ b.name }}</span>
-              <button class="copy-btn" title="Копирует этот тип без комментариев" @click="copy(b.copy, String(i))">
-                {{ copiedKey === String(i) ? '✓' : 'Копировать' }}
+              <button class="copy-btn" :title="t('output.copyOneTitle')" @click="copy(b.copy, String(i))">
+                {{ copiedKey === String(i) ? '✓' : t('output.copy') }}
               </button>
               <button
                 class="copy-btn"
                 :class="{ 'copy-btn--active': compare?.name === b.name }"
-                title="Сравнить с вашим типом из кода"
+                :title="t('output.compareTitle')"
                 @click="compare = { name: b.name!, code: b.copy }"
               >
-                Сравнить
+                {{ t('output.compare') }}
               </button>
             </div>
             <pre class="code"><code class="hljs" v-html="b.html"></code></pre>

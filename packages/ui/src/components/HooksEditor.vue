@@ -4,14 +4,17 @@ import hljs from 'highlight.js/lib/core';
 import typescript from 'highlight.js/lib/languages/typescript';
 import javascript from 'highlight.js/lib/languages/javascript';
 import { useHooks } from '../composables/useHooks';
+import { locale } from '../composables/useLocale';
 import {
-  DEFAULT_PRESET_CODE,
+  defaultPresetCode,
   generateBlocksWithErrors,
   stripComments,
   type EndpointEntry,
   type OpenApiSpec,
 } from '@openapi-parser/core';
 import { getHost } from '../host';
+import { t } from '../i18n';
+import type { MessageKey } from '../i18n/types';
 
 hljs.registerLanguage('typescript', typescript);
 hljs.registerLanguage('javascript', javascript);
@@ -27,6 +30,7 @@ const emit = defineEmits<{ close: [] }>();
 const {
   presets,
   active,
+  presetName,
   hooks,
   compileError,
   selectPreset,
@@ -66,6 +70,10 @@ watch(active, (preset) => {
   draft.value = preset.code;
 });
 
+// Смена языка переписывает код встроенного пресета. Отложенная запись успела бы
+// сохранить текст на старом языке и задним числом форкнуть пользовательскую копию.
+watch(locale, () => clearTimeout(debounceTimer));
+
 // после программной смены текста слои могут разъехаться по скроллу
 watch(draft, () => void nextTick(syncScroll));
 
@@ -76,7 +84,7 @@ function onInput(value: string) {
 }
 
 function insertExample() {
-  onInput(DEFAULT_PRESET_CODE);
+  onInput(defaultPresetCode(locale.value));
 }
 
 // Tab внутри textarea вставляет отступ, а не уводит фокус
@@ -133,9 +141,20 @@ const renaming = ref(false);
 const nameDraft = ref('');
 
 function startRename() {
-  nameDraft.value = active.value.name;
+  // именно переведённое имя: у встроенного в name лежит ключ сообщения
+  nameDraft.value = presetName(active.value);
   renaming.value = true;
 }
+
+// ошибка компиляции приходит кодом — текст собираем здесь, чтобы он
+// перерисовывался вместе со сменой языка
+// ключ вычисляется в рантайме, поэтому вариативный кортеж t() здесь не применим —
+// зовём через сигнатуру с необязательными параметрами (как в useSpec)
+const translate = t as (key: MessageKey, params?: Record<string, string | number>) => string;
+
+const compileErrorText = computed(() =>
+  compileError.value ? translate(compileError.value.code, compileError.value.params) : '',
+);
 
 function commitRename() {
   const name = nameDraft.value.trim();
@@ -165,26 +184,28 @@ function commitRename() {
               :value="active.id"
               @change="selectPreset(($event.target as HTMLSelectElement).value)"
             >
-              <option v-for="p in presets" :key="p.id" :value="p.id">{{ p.name }}</option>
+              <option v-for="p in presets" :key="p.id" :value="p.id">{{ presetName(p) }}</option>
             </select>
-            <button class="btn" title="Дублировать пресет" @click="duplicatePreset">Дублировать</button>
-            <button v-if="!active.builtin" class="btn" title="Переименовать" @click="startRename">
-              Переименовать
+            <button class="btn" :title="t('hooks.duplicateTitle')" @click="duplicatePreset">
+              {{ t('hooks.duplicate') }}
             </button>
-            <button v-if="!active.builtin" class="btn btn--danger" title="Удалить пресет" @click="deletePreset">
-              Удалить
+            <button v-if="!active.builtin" class="btn" :title="t('hooks.rename')" @click="startRename">
+              {{ t('hooks.rename') }}
+            </button>
+            <button v-if="!active.builtin" class="btn btn--danger" :title="t('hooks.deleteTitle')" @click="deletePreset">
+              {{ t('hooks.delete') }}
             </button>
           </template>
         </div>
-        <button class="close-btn" title="Закрыть" @click="emit('close')">✕</button>
+        <button class="close-btn" :title="t('hooks.close')" @click="emit('close')">✕</button>
       </header>
 
       <div class="body">
         <section class="pane">
           <div class="pane-head">
-            <span class="pane-title">Правила генерации (JavaScript)</span>
-            <button class="btn" title="Вставить образец со всеми хуками" @click="insertExample">
-              Вставить образец
+            <span class="pane-title">{{ t('hooks.title') }}</span>
+            <button class="btn" :title="t('hooks.insertExampleTitle')" @click="insertExample">
+              {{ t('hooks.insertExample') }}
             </button>
           </div>
           <div class="code-editor">
@@ -197,16 +218,14 @@ function commitRename() {
               :value="draft"
               class="code-input"
               spellcheck="false"
-              placeholder="Пусто — работают правила по умолчанию. Нажмите «Вставить образец», чтобы увидеть все доступные хуки."
+              :placeholder="t('hooks.codePlaceholder')"
               @input="onInput(($event.target as HTMLTextAreaElement).value)"
               @scroll="syncScroll"
               @keydown.tab.prevent="onTab"
             />
           </div>
-          <p v-if="active.builtin" class="note">
-            Встроенный пресет: первая правка создаст вашу копию.
-          </p>
-          <p v-if="compileError" class="error">{{ compileError }}</p>
+          <p v-if="active.builtin" class="note">{{ t('hooks.builtinNote') }}</p>
+          <p v-if="compileErrorText" class="error">{{ compileErrorText }}</p>
           <ul v-if="preview.errors.length" class="error error--list">
             <li v-for="(err, i) in preview.errors" :key="i">{{ err }}</li>
           </ul>
@@ -215,14 +234,13 @@ function commitRename() {
         <section class="pane">
           <div class="pane-head">
             <span class="pane-title">
-              Предпросмотр<template v-if="entry">: {{ entry.method }} {{ entry.path }}</template>
+              {{ t('hooks.preview')
+              }}<template v-if="entry">: {{ entry.method }} {{ entry.path }}</template>
             </span>
-            <button v-if="previewClean" class="btn" @click="copyPreview">Копировать</button>
+            <button v-if="previewClean" class="btn" @click="copyPreview">{{ t('hooks.copy') }}</button>
           </div>
           <div class="preview">
-            <p v-if="preview.empty" class="note">
-              Выберите эндпоинт в списке — здесь появится результат с вашими правилами
-            </p>
+            <p v-if="preview.empty" class="note">{{ t('hooks.previewEmpty') }}</p>
             <pre v-else class="code"><code class="hljs" v-html="preview.html"></code></pre>
           </div>
         </section>

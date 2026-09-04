@@ -1,5 +1,11 @@
 import * as vscode from 'vscode';
-import { STATE_GLOBAL, type HostResponse, type WebviewRequest } from '../../shared/protocol';
+import {
+  ENV_GLOBAL,
+  STATE_GLOBAL,
+  type EnvSnapshot,
+  type HostResponse,
+  type WebviewRequest,
+} from '../../shared/protocol';
 import { SpecService } from './spec-service';
 import { readThemeTokens } from './theme-service';
 
@@ -129,10 +135,20 @@ export class SpecPanel {
     // useTheme и useHooks читают его до того, как успел бы отработать запрос к host.
     const snapshot = this.readState();
     const state = JSON.stringify(snapshot).replace(/</g, '\\u003c');
+
+    // Язык редактора — отдельным глобалом, не в снапшоте: снапшот хранит выбор
+    // пользователя, и язык хоста затёр бы его. vscode.env.language бывает
+    // 'ru', 'en', 'pt-br' — всё, кроме русского, ведём в английский.
+    const env: EnvSnapshot = {
+      locale: vscode.env.language.toLowerCase().startsWith('ru') ? 'ru' : 'en',
+    };
+    // экранирование обязательно и здесь: это защита от выхода из </script>
+    const envJson = JSON.stringify(env).replace(/</g, '\\u003c');
+
     const highlight = highlightStyle();
 
     return `<!doctype html>
-<html lang="ru">
+<html lang="${env.locale}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -156,7 +172,7 @@ export class SpecPanel {
   </head>
   <body>
     <div id="app"></div>
-    <script nonce="${nonce}">window.${STATE_GLOBAL} = ${state};</script>
+    <script nonce="${nonce}">window.${STATE_GLOBAL} = ${state}; window.${ENV_GLOBAL} = ${envJson};</script>
     <script type="module" nonce="${nonce}" src="${script}"></script>
   </body>
 </html>`;

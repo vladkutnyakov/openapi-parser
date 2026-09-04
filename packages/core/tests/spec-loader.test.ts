@@ -43,24 +43,22 @@ describe('loadSpecFromSource: источник с диска', () => {
     expect(outcome.kind).toBe('error');
     if (outcome.kind !== 'error') return;
     expect(outcome.status).toBe(500);
-    expect(outcome.error).toMatch(/ENOENT/);
+    // сообщение от fs едет параметром как есть: оно системное и не переводится
+    expect(outcome.code).toBe('technical');
+    expect(String(outcome.params?.message)).toMatch(/ENOENT/);
   });
 
   it('пустой источник — ошибка 400', async () => {
     const outcome = await loadSpecFromSource('   ', noCookies);
-    expect(outcome).toEqual({ kind: 'error', status: 400, error: 'Не указан источник спеки' });
+    expect(outcome).toEqual({ kind: 'error', status: 400, code: 'source.empty' });
   });
 
-  it('невалидный JSON — 422 с внятным текстом', async () => {
+  it('невалидный JSON — 422 с внятным кодом', async () => {
     const outcome = await loadSpecFromSource('/любой/путь', {
       getCookie: () => undefined,
       readFile: () => Promise.resolve('{ это не json'),
     });
-    expect(outcome).toEqual({
-      kind: 'error',
-      status: 422,
-      error: 'Содержимое по этому источнику — не валидный JSON',
-    });
+    expect(outcome).toEqual({ kind: 'error', status: 422, code: 'source.notJson' });
   });
 });
 
@@ -76,7 +74,7 @@ describe('loadSpecFromSource: распознавание авторизации'
     });
     expect(outcome).toEqual({
       kind: 'needs-auth',
-      error: 'Источник требует авторизации',
+      code: 'source.needsAuth',
       loginUrl: 'http://keycloak.test/auth',
       origin: 'http://api.test',
     });
@@ -113,7 +111,7 @@ describe('loadSpecFromSource: распознавание авторизации'
     });
     expect(outcome.kind).toBe('needs-auth');
     if (outcome.kind !== 'needs-auth') return;
-    expect(outcome.error).toMatch(/HTML вместо JSON/);
+    expect(outcome.code).toBe('source.needsAuthHtml');
   });
 
   it('JSON, начинающийся с "<" в строке, авторизацией не считается', async () => {
@@ -137,7 +135,9 @@ describe('loadSpecFromSource: распознавание авторизации'
     expect(outcome.kind).toBe('error');
     if (outcome.kind !== 'error') return;
     expect(outcome.status).toBe(502);
-    expect(outcome.error).toMatch(/ответил 500/);
+    expect(outcome.code).toBe('source.serverStatus');
+    // статус и statusText от бэкенда — данные, а не текст: переводится только рамка
+    expect(outcome.params?.status).toBe(500);
   });
 });
 

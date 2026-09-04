@@ -4,6 +4,7 @@
  * иначе бандлер веб-версии втянул бы `node:fs` в браузерный бандл.
  */
 export * from './openapi-types';
+export * from './errors';
 export * from './endpoint-index';
 export * from './resolver';
 export * from './generator';

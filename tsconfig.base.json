@@ -6,6 +6,11 @@
     "strict": true,
     "noEmit": true,
     "isolatedModules": true,
+    // Вход @openapi-parser/core/node указывает прямо на .ts-файл, а vite.config.ts
+    // грузит его Node-загрузчиком напрямую — тому нужен реально существующий путь,
+    // то есть импорт с расширением .ts. Разрешаем: emit'а нигде нет (noEmit выше),
+    // код собирают Vite и esbuild.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,

@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import {
   addRecentSource,
   buildEndpointIndex,
@@ -6,11 +6,16 @@ import {
   removeRecentSource,
   renameRecentSource,
   serializeRecentSources,
+  SpecError,
+  technicalError,
   type EndpointEntry,
   type OpenApiSpec,
   type RecentSource,
+  type SpecErrorPayload,
 } from '@openapi-parser/core';
 import { getHost, hostStorage } from '../host';
+import { t } from '../i18n';
+import type { MessageKey } from '../i18n/types';
 
 const STORAGE_KEY = 'openapi-parser:spec-source';
 const RECENT_KEY = 'openapi-parser:recent-sources';
@@ -18,12 +23,29 @@ const RECENT_KEY = 'openapi-parser:recent-sources';
 /** Источник закрыт авторизацией: показываем ссылку на вход и поле для куки. */
 export type AuthPrompt = { loginUrl: string; origin: string };
 
+/**
+ * Единственное место, где код ошибки превращается в текст: ключи словаря
+ * зеркалят коды (`error.${code}`).
+ *
+ * Ключ вычисляется в рантайме, поэтому вариативный кортеж t() здесь не работает —
+ * зовём через сигнатуру с необязательными параметрами. Полноту набора ключей
+ * (на каждый код есть свой) проверяет тест в packages/ui/tests.
+ */
+const translate = t as (key: MessageKey, params?: Record<string, string | number>) => string;
+
+function messageOf(payload: SpecErrorPayload): string {
+  return translate(`error.${payload.code}` as MessageKey, payload.params);
+}
+
 export function useSpec() {
   const source = ref(readSavedSource());
   const spec = ref<OpenApiSpec | null>(null);
   const endpoints = ref<EndpointEntry[]>([]);
   const loading = ref(false);
-  const error = ref('');
+  // Храним код, а не готовую строку: иначе ошибка, уже показанная на экране,
+  // осталась бы на старом языке после переключения — половина экрана по-русски.
+  const errorPayload = ref<SpecErrorPayload | null>(null);
+  const error = computed(() => (errorPayload.value ? messageOf(errorPayload.value) : ''));
   const authPrompt = ref<AuthPrompt | null>(null);
   const recent = ref<RecentSource[]>(parseRecentSources(hostStorage.get(RECENT_KEY)));
 
@@ -35,11 +57,11 @@ export function useSpec() {
   async function load() {
     const target = source.value.trim();
     if (!target) {
-      error.value = 'Укажите путь к JSON-файлу спеки или URL';
+      errorPayload.value = { code: 'source.required' };
       return;
     }
     loading.value = true;
-    error.value = '';
+    errorPayload.value = null;
     authPrompt.value = null;
     try {
       const result = await getHost().loadSpec(target);
@@ -47,7 +69,8 @@ export function useSpec() {
         if (result.needsAuth && result.loginUrl) {
           authPrompt.value = { loginUrl: result.loginUrl, origin: result.origin ?? '' };
         }
-        throw new Error(result.error || 'Не удалось загрузить спеку');
+        // код едет полем, а не через message: Error здесь только транспорт до catch
+        throw new SpecError(result.code ?? 'technical', result.params);
       }
       const parsed = result.spec as OpenApiSpec;
       endpoints.value = buildEndpointIndex(parsed); // бросит понятную ошибку, если это не OpenAPI 3.x
@@ -58,7 +81,9 @@ export function useSpec() {
     } catch (e) {
       spec.value = null;
       endpoints.value = [];
-      error.value = e instanceof Error ? e.message : String(e);
+      // сюда же приходит SpecError из buildEndpointIndex — форма payload у них общая
+      errorPayload.value =
+        e instanceof SpecError ? { code: e.code, params: e.params } : technicalError(e);
     } finally {
       loading.value = false;
     }
@@ -70,7 +95,7 @@ export function useSpec() {
     if (!prompt) return;
     const saved = await getHost().saveAuthCookie(prompt.origin || prompt.loginUrl, cookie);
     if (!saved.ok) {
-      error.value = saved.error || 'Не удалось сохранить куку';
+      errorPayload.value = { code: saved.code ?? 'source.cookieSaveFailed', params: saved.params };
       return;
     }
     await load();

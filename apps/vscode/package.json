@@ -1,7 +1,8 @@
 {
   "name": "openapi-types-tools",
+  "//displayName": "Имя продукта в Marketplace намеренно не локализуется: %ключ% сделал бы название расширения разным у читателей с разным языком.",
   "displayName": "OpenAPI Types Tools",
-  "description": "Generate TypeScript types from an OpenAPI 3.x endpoint — params, body, responses and all referenced DTOs",
+  "description": "%extension.description%",
   "version": "1.0.0",
   "author": {
     "name": "Vlad Kutnyakov",
@@ -51,7 +52,7 @@
     "commands": [
       {
         "command": "openapiParser.open",
-        "title": "OpenAPI Types Tools: Open panel",
+        "title": "%command.open.title%",
         "//iconForm": "Форма {light,dark} с одним файлом: иконка цветная и одинаково читается в обеих темах.",
         "icon": {
           "light": "assets/icon.svg",
@@ -64,7 +65,7 @@
       "activitybar": [
         {
           "id": "openapiParser",
-          "title": "OpenAPI Types Tools",
+          "title": "%viewsContainer.title%",
           "icon": "assets/icon.svg"
         }
       ]
@@ -74,7 +75,7 @@
       "openapiParser": [
         {
           "id": "openapiParser.launch",
-          "name": "Panel"
+          "name": "%view.launch.name%"
         }
       ]
     },
@@ -82,7 +83,7 @@
     "viewsWelcome": [
       {
         "view": "openapiParser.launch",
-        "contents": "Generate TypeScript types from an OpenAPI 3.x endpoint.\n[Open panel](command:openapiParser.open)"
+        "contents": "%viewsWelcome.contents%"
       }
     ]
   },

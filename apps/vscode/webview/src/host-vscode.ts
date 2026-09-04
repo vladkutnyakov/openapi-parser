@@ -1,6 +1,9 @@
+import { SpecError, technicalError } from '@openapi-parser/core';
 import type { HostBridge, SpecLoadResult } from '@openapi-parser/ui';
 import {
+  ENV_GLOBAL,
   STATE_GLOBAL,
+  type EnvSnapshot,
   type HostResponse,
   type LoadSpecPayload,
   type WebviewRequest,
@@ -52,7 +55,8 @@ function request(message: WebviewRequestBody): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(id);
-      reject(new Error('Расширение не ответило вовремя'));
+      // код, а не текст: сообщение соберёт слой ui на языке интерфейса
+      reject(new SpecError('host.timeout'));
     }, REQUEST_TIMEOUT_MS);
 
     pending.set(id, {
@@ -76,17 +80,34 @@ function stateSnapshot(): Record<string, string> {
   return value && typeof value === 'object' ? (value as Record<string, string>) : {};
 }
 
+/** Язык редактора едет отдельным глобалом рядом со снапшотом состояния */
+function envSnapshot(): EnvSnapshot {
+  const value = (window as unknown as Record<string, unknown>)[ENV_GLOBAL];
+  return value && typeof value === 'object' ? (value as EnvSnapshot) : { locale: 'en' };
+}
+
+/**
+ * Отказ приходит либо от нашего таймаута (SpecError с кодом), либо из panel.ts
+ * готовым техническим сообщением — второе показываем как есть.
+ */
+function toFailure(e: unknown): { ok: false; code: SpecLoadResult['code']; params?: SpecLoadResult['params'] } {
+  if (e instanceof SpecError) return { ok: false, code: e.code, params: e.params };
+  return { ok: false, ...technicalError(e) };
+}
+
 export function createVscodeHost(): HostBridge {
   const state = stateSnapshot();
 
   return {
     kind: 'vscode',
 
+    locale: envSnapshot().locale,
+
     async loadSpec(source: string): Promise<SpecLoadResult> {
       try {
-        return (await request({ type: 'loadSpec', source })) as LoadSpecPayload;
+        return (await request({ type: 'loadSpec', source })) as LoadSpecPayload as SpecLoadResult;
       } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        return toFailure(e);
       }
     },
 
@@ -95,7 +116,7 @@ export function createVscodeHost(): HostBridge {
         await request({ type: 'saveAuthCookie', origin, cookie });
         return { ok: true };
       } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        return toFailure(e);
       }
     },
 

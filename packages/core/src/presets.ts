@@ -1,5 +1,16 @@
+/**
+ * Язык образцов кода. Объявлен здесь, а не в ui: core не зависит ни от чего,
+ * и направление зависимостей (ui → core) от этого не меняется.
+ */
+export type PresetLocale = 'ru' | 'en';
+
 export interface Preset {
   id: string;
+  /**
+   * У встроенных — ключ сообщения ('preset.classic.name'), у пользовательских —
+   * готовое имя. Различаются по флагу builtin: имя встроенного переводит ui,
+   * пользовательское трогать нельзя ни при каких обстоятельствах.
+   */
   name: string;
   code: string;
   /** Встроенные пресеты не редактируются — правка создаёт копию */
@@ -7,11 +18,20 @@ export interface Preset {
 }
 
 /**
- * Образец для кнопки «Вставить образец»: все доступные хуки, каждый
- * воспроизводит поведение по умолчанию. Тест в hooks.test.ts следит,
- * чтобы образец не разошёлся с реальными дефолтами генератора.
+ * id первого встроенного пресета. Отдельной константой, потому что useHooks
+ * инициализирует activeId на этапе выполнения модуля — до того, как известен язык.
  */
-export const DEFAULT_PRESET_CODE = `// Правила по умолчанию уже применяются — этот код показывает,
+export const DEFAULT_PRESET_ID = 'builtin:classic';
+
+/**
+ * Образец для кнопки «Вставить образец»: все доступные хуки, каждый
+ * воспроизводит поведение по умолчанию. Тест в hooks.test.ts следит, чтобы
+ * образец не разошёлся с реальными дефолтами генератора — причём на обоих языках.
+ *
+ * Между локалями отличаются только комментарии: код обязан вести себя одинаково,
+ * это отдельно проверяется тестом на кросс-локальную эквивалентность.
+ */
+const DEFAULT_PRESET_CODE_RU = `// Правила по умолчанию уже применяются — этот код показывает,
 // как их переопределить. Любой хук можно удалить: тогда работает дефолт.
 // Возврат undefined из хука тоже означает "оставь как есть".
 ({
@@ -57,8 +77,54 @@ export const DEFAULT_PRESET_CODE = `// Правила по умолчанию у
   },
 })`;
 
+const DEFAULT_PRESET_CODE_EN = `// The default rules already apply — this code shows how to override
+// them. Any hook can be deleted: the default takes over.
+// Returning undefined from a hook also means "leave it as is".
+({
+  // One field line. f.type is the "clean" type, without ? and | null:
+  // this hook decides what to append.
+  // f: { key, type, required, nullable, source, indent, schema, docs }
+  //   source: 'response' | 'body' | 'query' | 'path'
+  field(f) {
+    return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${f.type};\`
+  },
+
+  // Primitive or enum → TS type
+  // s: { type, format, enum, source, schema }
+  scalar(s) {
+    // an enum expands into a union of literals
+    if (s.enum && s.enum.length) {
+      return s.enum
+        .map(v => (typeof v === 'string' ? \`'\${v}'\` : String(v)))
+        .join(' | ')
+    }
+    if (s.type === 'integer') return 'number'
+  },
+
+  // Type name
+  // n: { name, kind, operationId, status, method, path }
+  //   kind: 'dto' | 'response' | 'body' | 'query' | 'path'
+  typeName(n) {
+    return n.name
+  },
+
+  // The whole declaration
+  // d: { name, kind, body, isInterface, docs }
+  declaration(d) {
+    return d.isInterface
+      ? \`export interface \${d.name} \${d.body}\`
+      : \`export type \${d.name} = \${d.body};\`
+  },
+
+  // Comments: d: { parts, indent } → array of lines ([] to turn them off)
+  docs(d) {
+    if (!d.parts.length) return []
+    return [\`\${d.indent}/** \${d.parts.join(' · ')} */\`]
+  },
+})`;
+
 /** Конвенции конкретного бэкенда: | null почти везде, строковые enum как string, без ; */
-const PROJECT_CODE = `// Конвенции проекта: в ответах необязательное поле — это | null,
+const PROJECT_CODE_RU = `// Конвенции проекта: в ответах необязательное поле — это | null,
 // а не ?; в body и query null допустим у любого поля, а ? отвечает только
 // за то, можно ли не передавать ключ. Строковые enum сводятся к string,
 // точек с запятой нет. Строгие только path-параметры — они всегда в URL.
@@ -96,34 +162,91 @@ const PROJECT_CODE = `// Конвенции проекта: в ответах н
   },
 })`;
 
-const MINIMAL_CODE = `// Классический TS без комментариев: только типы, никаких JSDoc.
+const PROJECT_CODE_EN = `// Project conventions: in responses an optional field is | null,
+// not ?; in body and query null is allowed on any field, and ? only says
+// whether the key may be omitted. String enums collapse to string,
+// no semicolons. Only path params are strict — they are always in the URL.
+({
+  field(f) {
+    // don't duplicate | null if the type is already nullable
+    const withNull = t => (t.endsWith(' | null') ? t : t + ' | null')
+
+    if (f.source === 'response') {
+      // in responses: an optional field gets | null instead of ?
+      return \`\${f.indent}\${f.key}: \${f.required ? f.type : withNull(f.type)}\`
+    }
+    if (f.source === 'path') {
+      // a path param is always present in the URL and can't be null
+      return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${f.type}\`
+    }
+    if (f.source === 'query') {
+      // query params always allow null
+      return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${withNull(f.type)}\`
+    }
+    // body: the backend accepts null in any field, ? only on optional ones
+    return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${withNull(f.type)}\`
+  },
+
+  scalar(s) {
+    // a string enum collapses to string (the literals stay in the comment)
+    if (s.enum && s.enum.every(v => typeof v === 'string')) return 'string'
+    if (s.type === 'integer') return 'number'
+  },
+
+  declaration(d) {
+    return d.isInterface
+      ? \`export interface \${d.name} \${d.body}\`
+      : \`export type \${d.name} = \${d.body}\`
+  },
+})`;
+
+const MINIMAL_CODE_RU = `// Классический TS без комментариев: только типы, никаких JSDoc.
 ({
   docs() {
     return []
   },
 })`;
 
-export const BUILTIN_PRESETS: Preset[] = [
-  {
-    // пустой код = дефолты генератора, то есть классический TS
-    id: 'builtin:classic',
-    name: 'Классический TS (по умолчанию)',
-    code: '',
-    builtin: true,
+const MINIMAL_CODE_EN = `// Classic TS without comments: types only, no JSDoc.
+({
+  docs() {
+    return []
   },
-  {
-    id: 'builtin:project',
-    name: 'Мой проект',
-    code: PROJECT_CODE,
-    builtin: true,
-  },
-  {
-    id: 'builtin:minimal',
-    name: 'Без комментариев',
-    code: MINIMAL_CODE,
-    builtin: true,
-  },
-];
+})`;
+
+export function defaultPresetCode(locale: PresetLocale): string {
+  return locale === 'ru' ? DEFAULT_PRESET_CODE_RU : DEFAULT_PRESET_CODE_EN;
+}
+
+/**
+ * Встроенные пресеты зависят от языка только текстом комментариев: id и поведение
+ * одинаковы, поэтому сохранённый activeId переживает переключение языка, а сам
+ * вывод генератора от него не меняется.
+ */
+export function builtinPresets(locale: PresetLocale): Preset[] {
+  const ru = locale === 'ru';
+  return [
+    {
+      // пустой код = дефолты генератора, то есть классический TS
+      id: DEFAULT_PRESET_ID,
+      name: 'preset.classic.name',
+      code: '',
+      builtin: true,
+    },
+    {
+      id: 'builtin:project',
+      name: 'preset.project.name',
+      code: ru ? PROJECT_CODE_RU : PROJECT_CODE_EN,
+      builtin: true,
+    },
+    {
+      id: 'builtin:minimal',
+      name: 'preset.minimal.name',
+      code: ru ? MINIMAL_CODE_RU : MINIMAL_CODE_EN,
+      builtin: true,
+    },
+  ];
+}
 
 export function createPreset(name: string, code: string): Preset {
   return {

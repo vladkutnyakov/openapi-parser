@@ -2,7 +2,12 @@ import { defineConfig, type Connect, type Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { loadSpecFromSource, originOf, type LoadOutcome } from '@openapi-parser/core/node';
+import {
+  loadSpecFromSource,
+  originOf,
+  technicalError,
+  type LoadOutcome,
+} from '@openapi-parser/core/node';
 
 /**
  * Куки для закрытых авторизацией источников: origin → значение заголовка Cookie.
@@ -19,18 +24,22 @@ function send(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-/** Перевод результата общего загрузчика в HTTP-ответ. */
+/**
+ * Перевод результата общего загрузчика в HTTP-ответ. По проводу едет код ошибки,
+ * а не текст: дев-сервер работает в Node и словаря интерфейса не видит.
+ */
 function sendOutcome(res: ServerResponse, outcome: LoadOutcome) {
   if (outcome.kind === 'ok') return send(res, 200, outcome.spec);
   if (outcome.kind === 'needs-auth') {
     return send(res, 401, {
-      error: outcome.error,
+      code: outcome.code,
+      params: outcome.params,
       loginUrl: outcome.loginUrl,
       origin: outcome.origin,
       needsAuth: true,
     });
   }
-  send(res, outcome.status, { error: outcome.error });
+  send(res, outcome.status, { code: outcome.code, params: outcome.params });
 }
 
 /** POST /__spec/auth — сохранить куку для origin, чтобы фетч спеки прошёл авторизацию. */
@@ -43,13 +52,13 @@ async function handleAuthRequest(req: IncomingMessage, res: ServerResponse) {
       cookie?: string;
     };
     const key = originOf(origin ?? '');
-    if (!key) return send(res, 400, { error: 'Некорректный origin' });
+    if (!key) return send(res, 400, { code: 'source.badOrigin' });
     const value = (cookie ?? '').trim();
     if (value) authCookies.set(key, value);
     else authCookies.delete(key);
     send(res, 200, { ok: true });
   } catch {
-    send(res, 400, { error: 'Некорректное тело запроса' });
+    send(res, 400, { code: 'source.badRequestBody' });
   }
 }
 
@@ -62,7 +71,7 @@ async function handleSpecRequest(req: IncomingMessage, res: ServerResponse) {
   try {
     const params = new URL(req.url ?? '', 'http://localhost').searchParams;
     const source = (params.get('source') ?? '').trim();
-    if (!source) return send(res, 400, { error: 'Не указан источник спеки' });
+    if (!source) return send(res, 400, { code: 'source.empty' });
 
     // путь к файлу резолвим здесь: загрузчик ждёт готовый абсолютный путь
     const target = /^https?:\/\//i.test(source) ? source : resolve(source);
@@ -71,7 +80,7 @@ async function handleSpecRequest(req: IncomingMessage, res: ServerResponse) {
     });
     sendOutcome(res, outcome);
   } catch (e) {
-    send(res, 500, { error: e instanceof Error ? e.message : String(e) });
+    send(res, 500, technicalError(e));
   }
 }
 

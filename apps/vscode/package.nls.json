@@ -1,0 +1,7 @@
+{
+  "extension.description": "Generate TypeScript types from an OpenAPI 3.x endpoint — params, body, responses and all referenced DTOs",
+  "command.open.title": "OpenAPI Types Tools: Open panel",
+  "viewsContainer.title": "OpenAPI Types Tools",
+  "view.launch.name": "Panel",
+  "viewsWelcome.contents": "Generate TypeScript types from an OpenAPI 3.x endpoint.\n[Open panel](command:openapiParser.open)"
+}

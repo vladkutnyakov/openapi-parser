@@ -1,3 +1,4 @@
+import { SpecError } from './errors';
 import type { OpenApiSpec, OperationObject, PathItem } from './openapi-types';
 
 export const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'patch', 'options', 'head', 'trace'] as const;
@@ -19,10 +20,10 @@ export interface EndpointEntry {
 /** Спека → плоский список эндпоинтов для поиска и выбора. */
 export function buildEndpointIndex(spec: OpenApiSpec): EndpointEntry[] {
   if (spec.swagger) {
-    throw new Error(`Формат Swagger ${spec.swagger} не поддерживается — нужна спека OpenAPI 3.x`);
+    throw new SpecError('spec.swaggerUnsupported', { version: spec.swagger });
   }
   if (!spec.openapi) {
-    throw new Error('Это не похоже на OpenAPI-спеку: нет поля "openapi"');
+    throw new SpecError('spec.notOpenApi');
   }
 
   const entries: EndpointEntry[] = [];

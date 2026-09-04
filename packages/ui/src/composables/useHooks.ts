@@ -1,13 +1,24 @@
 import { computed, ref, watch } from 'vue';
-import { BUILTIN_PRESETS, compileHooks, createPreset, type Preset } from '@openapi-parser/core';
+import {
+  builtinPresets,
+  compileHooks,
+  createPreset,
+  DEFAULT_PRESET_ID,
+  type Preset,
+} from '@openapi-parser/core';
 import { hostStorage } from '../host';
+import { t } from '../i18n';
+import type { MessageKey } from '../i18n/types';
+import { locale } from './useLocale';
 
 const PRESETS_KEY = 'openapi-parser:presets';
 const ACTIVE_KEY = 'openapi-parser:active-preset';
 
 // состояние общее на всё приложение: правки в редакторе сразу видны в основном окне
 const userPresets = ref<Preset[]>([]);
-const activeId = ref<string>(BUILTIN_PRESETS[0].id);
+// не builtinPresets(locale)[0].id: инициализатор выполняется на этапе модуля,
+// когда язык ещё не известен
+const activeId = ref<string>(DEFAULT_PRESET_ID);
 /** Ошибки выполнения хуков на последней генерации (заполняет App.vue) */
 const runtimeErrors = ref<string[]>([]);
 
@@ -28,11 +39,21 @@ function init() {
   watch(activeId, (id) => save(ACTIVE_KEY, id));
 }
 
-const allPresets = computed<Preset[]>(() => [...BUILTIN_PRESETS, ...userPresets.value]);
+// Пересобираются при смене языка: у встроенных меняются имя и комментарии в коде.
+// id стабильны между локалями, поэтому выбранный пресет остаётся выбранным,
+// а вывод генератора не меняется — это охраняет тест кросс-локальной эквивалентности.
+const builtins = computed(() => builtinPresets(locale.value));
+
+const allPresets = computed<Preset[]>(() => [...builtins.value, ...userPresets.value]);
 
 const active = computed<Preset>(
-  () => allPresets.value.find((p) => p.id === activeId.value) ?? BUILTIN_PRESETS[0],
+  () => allPresets.value.find((p) => p.id === activeId.value) ?? builtins.value[0],
 );
+
+/** Имя встроенного пресета — ключ сообщения, пользовательского — готовый текст. */
+export function presetName(preset: Preset): string {
+  return preset.builtin ? t(preset.name as MessageKey) : preset.name;
+}
 
 const compiled = computed(() => compileHooks(active.value.code));
 
@@ -51,7 +72,8 @@ export function useHooks() {
   function updateCode(code: string) {
     const current = active.value;
     if (current.builtin) {
-      const copy = createPreset(`${current.name} (изменённый)`, code);
+      // имя берём переведённое: у встроенного в name лежит ключ сообщения
+      const copy = createPreset(t('preset.modifiedSuffix', { name: presetName(current) }), code);
       userPresets.value.push(copy);
       activeId.value = copy.id;
       return;
@@ -66,7 +88,10 @@ export function useHooks() {
   }
 
   function duplicatePreset() {
-    const copy = createPreset(`${active.value.name} (копия)`, active.value.code);
+    const copy = createPreset(
+      t('preset.copySuffix', { name: presetName(active.value) }),
+      active.value.code,
+    );
     userPresets.value.push(copy);
     activeId.value = copy.id;
   }
@@ -75,12 +100,13 @@ export function useHooks() {
     if (active.value.builtin) return;
     const id = active.value.id;
     userPresets.value = userPresets.value.filter((p) => p.id !== id);
-    activeId.value = BUILTIN_PRESETS[0].id;
+    activeId.value = DEFAULT_PRESET_ID;
   }
 
   return {
     presets: allPresets,
     active,
+    presetName,
     hooks: computed(() => compiled.value.hooks),
     compileError: computed(() => compiled.value.error),
     runtimeErrors,
@@ -108,7 +134,7 @@ function readUserPresets(): Preset[] {
 }
 
 function readActiveId(): string {
-  return hostStorage.get(ACTIVE_KEY) ?? BUILTIN_PRESETS[0].id;
+  return hostStorage.get(ACTIVE_KEY) ?? DEFAULT_PRESET_ID;
 }
 
 function save(key: string, value: string) {

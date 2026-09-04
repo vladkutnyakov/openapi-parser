@@ -59,9 +59,24 @@ export interface GeneratorHooks {
 
 const HOOK_NAMES = ['field', 'scalar', 'typeName', 'declaration', 'docs'] as const;
 
+/** Коды ошибок компиляции — текст собирает слой UI, как и для ошибок спеки. */
+export const ALL_HOOK_ERROR_CODES = [
+  'hooks.compileFailed', // { message } — от движка JS, не переводится
+  'hooks.notAnObject',
+  'hooks.notAFunction', // { name }
+  'hooks.unknownKeys', // { keys, known }
+] as const;
+
+export type HookErrorCode = (typeof ALL_HOOK_ERROR_CODES)[number];
+
+export interface HookError {
+  code: HookErrorCode;
+  params?: Record<string, string | number>;
+}
+
 export interface CompileResult {
   hooks: GeneratorHooks;
-  error: string | null;
+  error: HookError | null;
 }
 
 /**
@@ -76,11 +91,17 @@ export function compileHooks(code: string): CompileResult {
   try {
     value = new Function(`"use strict"; return (${trimmed});`)();
   } catch (e) {
-    return { hooks: {}, error: `Ошибка в коде: ${e instanceof Error ? e.message : String(e)}` };
+    return {
+      hooks: {},
+      error: {
+        code: 'hooks.compileFailed',
+        params: { message: e instanceof Error ? e.message : String(e) },
+      },
+    };
   }
 
   if (typeof value !== 'object' || value === null) {
-    return { hooks: {}, error: 'Код должен возвращать объект с методами-хуками' };
+    return { hooks: {}, error: { code: 'hooks.notAnObject' } };
   }
 
   const source = value as Record<string, unknown>;
@@ -91,13 +112,16 @@ export function compileHooks(code: string): CompileResult {
     const fn = source[name];
     if (fn === undefined) continue;
     if (typeof fn !== 'function') {
-      return { hooks: {}, error: `Хук "${name}" должен быть функцией` };
+      return { hooks: {}, error: { code: 'hooks.notAFunction', params: { name } } };
     }
     (hooks as Record<string, unknown>)[name] = fn;
   }
 
-  const error = unknownKeys.length
-    ? `Неизвестные хуки: ${unknownKeys.join(', ')}. Доступны: ${HOOK_NAMES.join(', ')}`
+  const error: HookError | null = unknownKeys.length
+    ? {
+        code: 'hooks.unknownKeys',
+        params: { keys: unknownKeys.join(', '), known: HOOK_NAMES.join(', ') },
+      }
     : null;
 
   return { hooks, error };
@@ -114,6 +138,12 @@ export class HookRunner {
     private readonly maxFailures = 20,
   ) {}
 
+  /**
+   * Ошибки времени выполнения остаются готовыми строками с английской рамкой,
+   * а не кодами, в отличие от ошибок компиляции: это отладочный вывод про JS,
+   * который пользователь написал сам, и сообщение движка внутри всё равно
+   * непереводимо. Переводить одну рамку вокруг непереводимого смысла нет.
+   */
   readonly errors: string[] = [];
 
   /** Вызывает хук; при ошибке или undefined возвращает fallback */
@@ -129,7 +159,7 @@ export class HookRunner {
       return result === undefined ? fallback : result;
     } catch (e) {
       this.failures++;
-      const message = `Хук "${String(name)}": ${e instanceof Error ? e.message : String(e)}`;
+      const message = `Hook "${String(name)}": ${e instanceof Error ? e.message : String(e)}`;
       // одна и та же ошибка повторяется на каждом поле — показываем один раз
       if (!this.seen.has(message)) {
         this.seen.add(message);

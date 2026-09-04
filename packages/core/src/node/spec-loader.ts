@@ -1,4 +1,12 @@
 import { readFile as readFileFs } from 'node:fs/promises';
+// Расширение в пути обязательно: vite.config.ts грузится Node-загрузчиком напрямую,
+// а тот extensionless-импорты не разрешает (по той же причине у входа ./node нет барреля).
+import { technicalError, type ErrorParams, type SpecErrorCode } from '../errors.ts';
+
+// коды ошибок реэкспортируем отсюда: вход `./node` указывает прямо на этот файл,
+// и иначе оболочкам (vite.config.ts) их не назвать
+export { ALL_SPEC_ERROR_CODES, SpecError, technicalError } from '../errors.ts';
+export type { ErrorParams, SpecErrorCode, SpecErrorPayload } from '../errors.ts';
 
 /**
  * Загрузка спеки с диска или по URL. Живёт в core, а не в оболочке, потому что нужна
@@ -20,10 +28,14 @@ export interface SpecLoaderDeps {
   fetchImpl?: typeof fetch;
 }
 
+/**
+ * Ошибка описывается кодом и параметрами, а не готовым текстом: загрузчик работает
+ * в Node (dev-сервер Vite и extension host), где словаря нет и быть не должно.
+ */
 export type LoadOutcome =
   | { kind: 'ok'; spec: unknown }
-  | { kind: 'needs-auth'; error: string; loginUrl: string; origin: string }
-  | { kind: 'error'; status: number; error: string };
+  | { kind: 'needs-auth'; code: SpecErrorCode; params?: ErrorParams; loginUrl: string; origin: string }
+  | { kind: 'error'; status: number; code: SpecErrorCode; params?: ErrorParams };
 
 export function originOf(url: string): string {
   try {
@@ -43,7 +55,7 @@ export async function loadSpecFromSource(
   deps: SpecLoaderDeps,
 ): Promise<LoadOutcome> {
   const target = source.trim();
-  if (!target) return { kind: 'error', status: 400, error: 'Не указан источник спеки' };
+  if (!target) return { kind: 'error', status: 400, code: 'source.empty' };
 
   const readFile = deps.readFile ?? ((path: string) => readFileFs(path, 'utf-8'));
   const doFetch = deps.fetchImpl ?? fetch;
@@ -58,17 +70,14 @@ export async function loadSpecFromSource(
       text = await readFile(target);
     }
   } catch (e) {
-    return { kind: 'error', status: 500, error: e instanceof Error ? e.message : String(e) };
+    // сообщение от fs или fetch (ENOENT и прочее) — системное, не переводится
+    return { kind: 'error', status: 500, ...technicalError(e) };
   }
 
   try {
     return { kind: 'ok', spec: JSON.parse(text) };
   } catch {
-    return {
-      kind: 'error',
-      status: 422,
-      error: 'Содержимое по этому источнику — не валидный JSON',
-    };
+    return { kind: 'error', status: 422, code: 'source.notJson' };
   }
 }
 
@@ -95,16 +104,19 @@ async function fetchSpecText(
   if (redirectedAway || r.status === 401 || r.status === 403) {
     return {
       kind: 'needs-auth',
-      error: 'Источник требует авторизации',
+      code: 'source.needsAuth',
       loginUrl: location || source,
       origin,
     };
   }
   if (!r.ok) {
+    // statusText приходит от бэкенда: едет параметром как есть, переводится
+    // только рамка предложения вокруг него
     return {
       kind: 'error',
       status: 502,
-      error: `Сервер спеки ответил ${r.status} ${r.statusText}`,
+      code: 'source.serverStatus',
+      params: { status: r.status, statusText: r.statusText },
     };
   }
 
@@ -113,7 +125,7 @@ async function fetchSpecText(
   if (!/json/i.test(contentType) && text.trimStart().startsWith('<')) {
     return {
       kind: 'needs-auth',
-      error: 'Источник вернул HTML вместо JSON — похоже, требуется авторизация',
+      code: 'source.needsAuthHtml',
       loginUrl: source,
       origin,
     };
