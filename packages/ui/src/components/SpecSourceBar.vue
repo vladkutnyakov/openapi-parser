@@ -256,8 +256,42 @@ function highlight(text: string): { text: string; match: boolean }[] {
           </li>
         </ul>
       </div>
-      <button class="load-btn" :disabled="loading" @click="emit('load')">
-        {{ loading ? t('load.loading') : spec ? t('load.refresh') : t('load.load') }}
+      <!--
+        Подпись уехала в title: круговая стрелка одинаково читается и как «загрузить»,
+        и как «обновить», а во время загрузки крутится — состояние видно без текста.
+        Иконка вставлена инлайном на currentColor, а не символом: ↻ рисуется по-разному
+        в разных шрифтах, а эмодзи не подчиняется цвету кнопки. Пакет с иконками ради
+        одной штуки не заводим — у ui и так всего две runtime-зависимости.
+      -->
+      <button
+        class="load-btn load-btn--icon"
+        :disabled="loading"
+        :title="loading ? t('load.loading') : spec ? t('load.refresh') : t('load.load')"
+        :aria-label="loading ? t('load.loading') : spec ? t('load.refresh') : t('load.load')"
+        @click="emit('load')"
+      >
+        <!--
+          Форма взята дословно из Lucide rotate-cw (ISC), включая viewBox 24: свои
+          координаты я подбирал на глаз и получал неестественный контур. Здесь важны
+          два приёма готовых наборов — дуга не обрывается на окружности, а выходит по
+          касательной наружу, и наконечник рисуется тем же штрихом (уголок v/h), а не
+          залитым треугольником: заливка стыкуется со штрихом утолщением.
+          Размер задаёт CSS, поэтому пересчитывать сетку на 16 незачем.
+        -->
+        <svg
+          class="load-btn__icon"
+          :class="{ 'load-btn__icon--spin': loading }"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+          <path d="M21 3v5h-5" />
+        </svg>
       </button>
       <button class="theme-btn" :title="t('rules.open')" @click="emit('openRules')">⚙</button>
       <!--
@@ -354,6 +388,33 @@ function highlight(text: string): { text: string; match: boolean }[] {
 .load-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+/* иконочный вариант: ширина по высоте строки ввода, а не по подписи */
+.load-btn--icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 34px;
+  flex: none;
+}
+.load-btn__icon {
+  width: 16px;
+  height: 16px;
+}
+.load-btn__icon--spin {
+  animation: load-spin 0.9s linear infinite;
+}
+/* у кого выключены анимации, вращение отвлекало бы: состояние остаётся в title */
+@media (prefers-reduced-motion: reduce) {
+  .load-btn__icon--spin {
+    animation: none;
+  }
+}
+@keyframes load-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .theme-btn {
   padding: 6px 10px;
