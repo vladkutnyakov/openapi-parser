@@ -109,6 +109,39 @@
           }
         }
       }
+    },
+    "/users/{id}/avatar": {
+      "post": {
+        "operationId": "uploadAvatar",
+        "summary": "Загрузка аватара",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                  "file": { "type": "string", "format": "binary" },
+                  "comment": { "type": "string" }
+                }
+              }
+            },
+            "application/octet-stream": { "schema": { "type": "string", "format": "binary" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UserResponseDto" } }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

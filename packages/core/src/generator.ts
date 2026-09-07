@@ -248,11 +248,32 @@ function renderRequestBody(
   const resolved = requestBody.$ref
     ? (resolveJsonPointer(ctx.spec, requestBody.$ref) as RequestBodyObject | undefined)
     : requestBody;
-  const media = pickJsonMedia(resolved?.content);
-  if (!media?.schema) return null;
+  const picked = pickJsonMedia(resolved?.content);
+  if (!picked?.media.schema) return null;
   const name = typeName(ctx, `${opName}Body`, 'body');
-  const body = tsType(ctx, media.schema, '', 0, 'optional', 'body');
-  return { name, code: declaration(ctx, name, 'body', body, false, []), kind: 'body' };
+  const body = tsType(ctx, picked.media.schema, '', 0, 'optional', 'body');
+  // Комментарий уезжает в чужой репозиторий — он всегда английский (см. CLAUDE.md).
+  const comment = mediaComment(picked, resolved?.content);
+  return { name, code: `${comment}\n${declaration(ctx, name, 'body', body, false, [])}`, kind: 'body' };
+}
+
+/**
+ * Строка `// Content-Type: ...` над телом запроса.
+ *
+ * Печатается всегда, а не только для не-JSON: по одному типу нельзя отличить
+ * `application/json` от `multipart/form-data`, а от этого зависит, как фронт
+ * отправляет запрос. Молчание тут читалось бы как «обычный JSON».
+ *
+ * Остальные типы перечисляются рядом: сгенерирован тип ровно по одному из них,
+ * и пользователь должен видеть, что выбор был.
+ */
+function mediaComment(
+  picked: PickedMedia,
+  content: Record<string, MediaTypeObject> | undefined,
+): string {
+  const others = Object.keys(content ?? {}).filter((k) => k !== picked.key);
+  const rest = others.length ? ` (also: ${others.join(', ')})` : '';
+  return `// Content-Type: ${picked.key}${rest}`;
 }
 
 function renderResponses(
@@ -268,12 +289,15 @@ function renderResponses(
       : rawResponse;
     const suffix = status === 'default' ? 'Default' : status;
     const comment = `// ${status}${response?.description ? `: ${response.description}` : ''}`;
-    const media = pickJsonMedia(response?.content);
-    if (media?.schema) {
+    const picked = pickJsonMedia(response?.content);
+    if (picked?.media.schema) {
       const name = typeName(ctx, `${opName}Response${suffix}`, 'response', status);
-      const body = tsType(ctx, media.schema, '', 0, 'nullable', 'response');
+      const body = tsType(ctx, picked.media.schema, '', 0, 'nullable', 'response');
       const alias = declaration(ctx, name, 'response', body, false, []);
-      blocks.push({ name, code: `${comment}\n${alias}`, kind: 'response' });
+      // Content-Type ответа значим не меньше, чем у запроса: text/csv или
+      // application/octet-stream по одному типу от JSON не отличить.
+      const media = mediaComment(picked, response?.content);
+      blocks.push({ name, code: `${comment}\n${media}\n${alias}`, kind: 'response' });
     } else {
       // Комментарий уезжает в код, который пользователь вставляет к себе в репозиторий:
       // он всегда английский и от языка интерфейса не зависит.
@@ -285,14 +309,20 @@ function renderResponses(
   return blocks;
 }
 
-function pickJsonMedia(content: Record<string, MediaTypeObject> | undefined): MediaTypeObject | undefined {
+/** Выбранный media type вместе со своим ключом: ключ нужен, чтобы показать его пользователю */
+interface PickedMedia {
+  key: string;
+  media: MediaTypeObject;
+}
+
+function pickJsonMedia(content: Record<string, MediaTypeObject> | undefined): PickedMedia | undefined {
   if (!content) return undefined;
-  if (content['application/json']) return content['application/json'];
+  if (content['application/json']) return { key: 'application/json', media: content['application/json'] };
   const jsonKey = Object.keys(content).find((k) => k.toLowerCase().includes('json'));
-  if (jsonKey) return content[jsonKey];
-  if (content['*/*']) return content['*/*'];
+  if (jsonKey) return { key: jsonKey, media: content[jsonKey] };
+  if (content['*/*']) return { key: '*/*', media: content['*/*'] };
   const first = Object.keys(content)[0];
-  return first ? content[first] : undefined;
+  return first ? { key: first, media: content[first] } : undefined;
 }
 
 // ------------------------------------------------------------ схема → TS-тип

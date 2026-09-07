@@ -19,7 +19,7 @@ function gen(method: string, path: string): string {
 
 describe('buildEndpointIndex', () => {
   it('собирает все операции из спеки', () => {
-    expect(index).toHaveLength(6);
+    expect(index).toHaveLength(7);
     expect(index.map((e) => e.id)).toContain('get /users/{id}');
     expect(index.find((e) => e.id === 'get /users')?.operationId).toBe('getUsers');
   });
@@ -208,5 +208,38 @@ describe('generateForEndpoint: разное', () => {
     const code = gen('GET', '/users');
     expect(code).toContain('export type GetUsersResponse200 = PageDtoUserResponseDto;');
     expect(code).toContain('content: UserResponseDto[];');
+  });
+});
+
+describe('Content-Type тела и ответов', () => {
+  it('multipart-тело помечено своим Content-Type', () => {
+    const code = gen('POST', '/users/{id}/avatar');
+    expect(code).toContain('// Content-Type: multipart/form-data');
+  });
+
+  it('остальные типы контента перечислены рядом — выбор был', () => {
+    const code = gen('POST', '/users/{id}/avatar');
+    expect(code).toContain('// Content-Type: multipart/form-data (also: application/octet-stream)');
+  });
+
+  it('обычный JSON тоже подписан: по одному типу его от multipart не отличить', () => {
+    const code = gen('POST', '/users');
+    expect(code).toContain('// Content-Type: application/json');
+  });
+
+  it('единственный тип контента идёт без списка остальных', () => {
+    const code = gen('POST', '/users');
+    expect(code).not.toContain('(also:');
+  });
+
+  it('ответ тоже подписан своим Content-Type', () => {
+    const code = gen('GET', '/users/{id}');
+    expect(code).toContain('// 200: OK\n// Content-Type: application/json');
+  });
+
+  it('подпись — комментарий: stripComments её убирает, тип остаётся', () => {
+    const clean = stripComments(gen('POST', '/users/{id}/avatar'));
+    expect(clean).not.toContain('Content-Type');
+    expect(clean).toContain('export type UploadAvatarBody = {');
   });
 });
