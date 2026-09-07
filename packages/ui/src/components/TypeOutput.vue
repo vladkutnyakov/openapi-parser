@@ -3,7 +3,13 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import hljs from 'highlight.js/lib/core';
 import typescript from 'highlight.js/lib/languages/typescript';
 // стили токенов подсветки — свои, на CSS-переменных (см. App.vue), чтобы работали обе темы
-import { findMatches, stripComments, type GeneratedBlock, type TypeKind } from '@openapi-parser/core';
+import {
+  findMatches,
+  stripComments,
+  type BlockMeta,
+  type GeneratedBlock,
+  type TypeKind,
+} from '@openapi-parser/core';
 import { getHost, hostStorage } from '../host';
 import { t, type MessageKey } from '../i18n';
 import { useFindInTypes } from '../composables/useFindInTypes';
@@ -15,12 +21,18 @@ hljs.registerLanguage('typescript', typescript);
 
 const props = defineProps<{ blocks: GeneratedBlock[] }>();
 
-// Для каждого блока: подсвеченный html для показа и чистый код (без комментариев) для копирования
+/*
+ * Для каждого блока: подсвеченный html для показа и чистый код (без комментариев)
+ * для копирования. Метаданные (адрес, статус, Content-Type) идут отдельным полем —
+ * в коде их больше нет, их рисует шаблон. Через этот computed надо тащить всё, что
+ * нужно шаблону: чего здесь нет, для него не существует.
+ */
 const view = computed(() =>
   props.blocks.map((b) => ({
     name: b.name,
     kind: b.kind,
-    html: hljs.highlight(b.code, { language: 'typescript' }).value,
+    meta: b.meta,
+    html: b.code ? hljs.highlight(b.code, { language: 'typescript' }).value : '',
     copy: stripComments(b.code),
   })),
 );
@@ -59,8 +71,9 @@ interface Section {
   code: string;
 }
 
-// Блок без kind — заголовок эндпоинта: он не относится ни к одной секции и рисуется над ними
-const headerBlocks = computed(() => view.value.filter((b) => !b.kind));
+// Блок без kind — заголовок эндпоинта: он не относится ни к одной секции и рисуется над ними.
+// Кода в нём нет вовсе, только метаданные, поэтому берём сразу meta.
+const header = computed<BlockMeta | undefined>(() => view.value.find((b) => !b.kind)?.meta);
 
 /** Блоки по категориям, в порядке первого появления категории. Пустых секций не бывает. */
 const sections = computed<Section[]>(() => {
@@ -381,8 +394,34 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <div ref="blocksRoot" class="blocks">
-          <!-- заголовок эндпоинта: не в секции, поэтому стоит над ними -->
-          <pre v-for="(b, i) in headerBlocks" :key="`h${i}`" class="code"><code class="hljs" v-html="b.html"></code></pre>
+          <!--
+            Заголовок эндпоинта: не в секции, поэтому стоит над ними. Это не код,
+            а факты о ручке — рисуются интерфейсом, а не комментарием внутри <pre>,
+            где терялись бы среди типов. summary приходит из спеки и не переводится.
+          -->
+          <header v-if="header" class="endpoint">
+            <span class="endpoint-method">{{ header.method }}</span>
+            <!--
+              Путь — кнопка, а не span с @click: по нему кликают, значит он должен
+              доставаться с клавиатуры и называть себя скринридеру. Копируется голый
+              путь без метода: его вставляют в код клиента, а не в лог.
+            -->
+            <button
+              class="endpoint-path"
+              type="button"
+              :title="t('output.copyPathTitle')"
+              @click="copy(header.path!, '__path')"
+            >
+              {{ header.path }}
+              <!--
+                v-if, а не постоянно висящий прозрачный span: зарезервированное место
+                на узкой панели переносило подпись на отдельную строку, и заголовок
+                выглядел разорванным ещё до того, как что-то скопировали.
+              -->
+              <span v-if="copiedKey === '__path'" class="endpoint-copied">{{ t('output.copied') }}</span>
+            </button>
+            <span v-if="header.summary" class="endpoint-summary">{{ header.summary }}</span>
+          </header>
 
           <section
             v-for="s in sections"
@@ -439,6 +478,31 @@ onBeforeUnmount(() => {
             <div v-show="!collapsed.has(s.kind)" class="section-body">
               <div v-for="(b, i) in s.blocks" :key="i" class="block">
                 <!--
+                  Строка метаданных над блоком: статус ответа с описанием и Content-Type.
+                  Раньше это были комментарии внутри кода — там они красились как
+                  описания полей и в потоке типов не читались. status и description
+                  приходят из спеки как есть, переводится только рамка вокруг них.
+                -->
+                <div v-if="b.meta && (b.meta.status || b.meta.contentType)" class="block-meta">
+                  <span v-if="b.meta.status" class="meta-status">{{ b.meta.status }}</span>
+                  <span v-if="b.meta.description" class="meta-desc">{{ b.meta.description }}</span>
+                  <span v-if="b.meta.noBody" class="meta-nobody">{{ t('output.noResponseBody') }}</span>
+                  <span
+                    v-if="b.meta.contentType"
+                    class="meta-ct"
+                    :title="
+                      b.meta.otherContentTypes?.length
+                        ? t('output.contentTypeOthers', { list: b.meta.otherContentTypes.join(', ') })
+                        : t('output.contentType')
+                    "
+                  >
+                    {{ b.meta.contentType }}
+                    <span v-if="b.meta.otherContentTypes?.length" class="meta-ct-more">
+                      {{ t('output.contentTypeMore', { count: b.meta.otherContentTypes.length }) }}
+                    </span>
+                  </span>
+                </div>
+                <!--
                   Кнопки блока — иконочные: на строку их две у каждого типа, и подписи
                   съедали бы место у самого имени. Смысл несут title и aria-label:
                   без текста внутри кнопка иначе осталась бы безымянной для скринридера.
@@ -479,7 +543,7 @@ onBeforeUnmount(() => {
                     </svg>
                   </button>
                 </div>
-                <pre class="code"><code class="hljs" v-html="b.html"></code></pre>
+                <pre v-if="b.html" class="code"><code class="hljs" v-html="b.html"></code></pre>
               </div>
             </div>
           </section>
@@ -579,6 +643,106 @@ onBeforeUnmount(() => {
 }
 .blocks {
   padding: 8px 16px 24px;
+}
+/*
+ * Заголовок эндпоинта. Раньше был комментарием внутри <pre> и сливался с кодом;
+ * теперь это строка интерфейса: метод выделен, путь моноширинный (в нём значимы
+ * {фигурные скобки} и слеши), summary — обычным текстом отдельной строкой.
+ */
+.endpoint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.endpoint-method {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--bg);
+  font: 600 11px/1.5 -apple-system, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: 0.04em;
+}
+/*
+ * Кнопка, но выглядит как текст: рамка и фон появляются только на hover/focus,
+ * иначе заголовок превратился бы в панель управления. Пунктир снизу — намёк,
+ * что элемент кликабельный: одного курсора мало, он виден лишь под мышью.
+ */
+.endpoint-path {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed var(--border);
+  background: none;
+  font: 600 13px/1.5 ui-monospace, Consolas, monospace;
+  color: var(--text);
+  text-align: left;
+  word-break: break-all;
+  cursor: pointer;
+}
+.endpoint-path:hover {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+/* Подтверждение появляется рядом с путём и только после клика — место под него не резервируется */
+.endpoint-copied {
+  margin-left: 6px;
+  color: var(--success);
+  font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+/* summary из спеки — на всю ширину, отдельной строкой под адресом */
+.endpoint-summary {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+}
+/*
+ * Метаданные блока (код ответа, его описание, Content-Type). Отбиты от кода
+ * и набраны пропорциональным шрифтом — так их видно как подпись к типу,
+ * а не как очередную строку TypeScript.
+ */
+.block-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 10px;
+  font-size: 11px;
+}
+.meta-status {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-weight: 600;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.meta-desc {
+  color: var(--muted);
+}
+.meta-nobody {
+  color: var(--muted);
+  font-style: italic;
+}
+/*
+ * Content-Type идёт по потоку, а не прижимается вправо: у тела запроса слева от
+ * него ничего нет (статус есть только у ответов), и margin-left: auto оставлял бы
+ * там пустую полосу с одиноким бейджем на краю.
+ */
+.meta-ct {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted);
+  font-family: ui-monospace, Consolas, monospace;
+  cursor: default;
+}
+.meta-ct-more {
+  color: var(--accent);
 }
 .section {
   margin-top: 14px;

@@ -51,6 +51,12 @@ export const en: Messages = {
   'output.sectionBody': 'Request body',
   'output.sectionResponse': 'Responses',
   'output.sectionDto': 'DTO',
+  'output.copyPathTitle': 'Copy endpoint path',
+  'output.noResponseBody': 'no body',
+  'output.contentType': 'Content type the type was generated from',
+  'output.contentTypeOthers': (p: { list: string }) =>
+    `The type was generated from this content type. Also declared: ${p.list}`,
+  'output.contentTypeMore': (p: { count: number }) => `+${p.count}`,
   'output.copySection': 'Copy section',
   'output.copySectionTitle': 'Copies every type in the section without comments',
   'output.toggleSection': 'Collapse / expand section',

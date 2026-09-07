@@ -95,10 +95,12 @@ describe('generateForEndpoint: GET /users/{id}', () => {
     expect(code).toContain('export type GetUserByIdResponse200 = UserResponseDto;');
   });
 
-  it('комментарии присутствуют в выводе для UI', () => {
-    expect(code).toContain('// GET /users/{id}');
+  it('в коде остаются только комментарии про сам тип, метаданных в нём нет', () => {
+    // описания полей объясняют тип — они и должны быть видны рядом с ним
     expect(code).toContain('format: date-time');
-    expect(code).toContain('// 200: OK');
+    // адрес и статус ответа переехали в meta: в потоке TS они не читались
+    expect(code).not.toContain('// GET /users/{id}');
+    expect(code).not.toContain('// 200: OK');
   });
 
   it('stripComments убирает все комментарии, код остаётся', () => {
@@ -119,16 +121,18 @@ describe('generateBlocks', () => {
     expect(names).toContain('GetUserByIdResponse200');
     expect(names).toContain('UserResponseDto');
     expect(names).toContain('RoleDto');
-    // заголовок эндпоинта — блок без имени
+    // заголовок эндпоинта — блок без имени и без кода: только метаданные для UI
     expect(blocks[0].name).toBeNull();
-    expect(blocks[0].code).toContain('// GET /users/{id}');
+    expect(blocks[0].code).toBe('');
+    expect(blocks[0].meta).toMatchObject({ method: 'GET', path: '/users/{id}' });
   });
 
-  it('ответ без тела — блок без имени, только комментарий', () => {
+  it('ответ без тела — блок без имени и без кода, факт лежит в meta', () => {
     const blocks = generateBlocks(spec, entry('DELETE', '/users/{id}'));
-    const noBody = blocks.find((b) => b.code.includes('// 204'));
+    const noBody = blocks.find((b) => b.meta?.status === '204');
     expect(noBody?.name).toBeNull();
-    expect(stripComments(noBody!.code)).toBe('');
+    expect(noBody?.code).toBe('');
+    expect(noBody?.meta?.noBody).toBe(true);
   });
 
   it('у блока проставлена категория — по ней UI группирует вывод', () => {
@@ -145,7 +149,7 @@ describe('generateBlocks', () => {
 
   it('ответ без тела всё равно относится к секции ответов', () => {
     const blocks = generateBlocks(spec, entry('DELETE', '/users/{id}'));
-    const noBody = blocks.find((b) => b.code.includes('// 204'));
+    const noBody = blocks.find((b) => b.meta?.status === '204');
     expect(noBody?.kind).toBe('response');
   });
 
@@ -196,11 +200,8 @@ describe('generateForEndpoint: разное', () => {
     expect(code).toContain('details?: Record<string, string>;');
   });
 
-  it('ответ без тела — только комментарий, всегда по-английски', () => {
+  it('ответ без тела не даёт кода вовсе', () => {
     const code = gen('DELETE', '/users/{id}');
-    expect(code).toContain('// 204');
-    // сгенерированный код уезжает в чужой репозиторий: язык интерфейса на него не влияет
-    expect(code).toContain('no response body');
     expect(code).not.toContain('Response204 =');
   });
 
@@ -212,34 +213,40 @@ describe('generateForEndpoint: разное', () => {
 });
 
 describe('Content-Type тела и ответов', () => {
+  const metaOf = (method: string, path: string, name: string) =>
+    generateBlocks(spec, entry(method, path)).find((b) => b.name === name)?.meta;
+
   it('multipart-тело помечено своим Content-Type', () => {
-    const code = gen('POST', '/users/{id}/avatar');
-    expect(code).toContain('// Content-Type: multipart/form-data');
+    expect(metaOf('POST', '/users/{id}/avatar', 'UploadAvatarBody')?.contentType).toBe(
+      'multipart/form-data',
+    );
   });
 
-  it('остальные типы контента перечислены рядом — выбор был', () => {
-    const code = gen('POST', '/users/{id}/avatar');
-    expect(code).toContain('// Content-Type: multipart/form-data (also: application/octet-stream)');
+  it('остальные типы контента едут рядом — выбор был', () => {
+    expect(metaOf('POST', '/users/{id}/avatar', 'UploadAvatarBody')?.otherContentTypes).toEqual([
+      'application/octet-stream',
+    ]);
   });
 
   it('обычный JSON тоже подписан: по одному типу его от multipart не отличить', () => {
-    const code = gen('POST', '/users');
-    expect(code).toContain('// Content-Type: application/json');
+    expect(metaOf('POST', '/users', 'CreateUserBody')?.contentType).toBe('application/json');
   });
 
   it('единственный тип контента идёт без списка остальных', () => {
-    const code = gen('POST', '/users');
-    expect(code).not.toContain('(also:');
+    expect(metaOf('POST', '/users', 'CreateUserBody')?.otherContentTypes).toBeUndefined();
   });
 
-  it('ответ тоже подписан своим Content-Type', () => {
-    const code = gen('GET', '/users/{id}');
-    expect(code).toContain('// 200: OK\n// Content-Type: application/json');
+  it('ответ подписан статусом, описанием и своим Content-Type', () => {
+    expect(metaOf('GET', '/users/{id}', 'GetUserByIdResponse200')).toMatchObject({
+      status: '200',
+      description: 'OK',
+      contentType: 'application/json',
+    });
   });
 
-  it('подпись — комментарий: stripComments её убирает, тип остаётся', () => {
-    const clean = stripComments(gen('POST', '/users/{id}/avatar'));
-    expect(clean).not.toContain('Content-Type');
-    expect(clean).toContain('export type UploadAvatarBody = {');
+  it('метаданные в код не попадают: в чужой репозиторий уезжает чистый тип', () => {
+    const code = gen('POST', '/users/{id}/avatar');
+    expect(code).not.toContain('Content-Type');
+    expect(stripComments(code)).toContain('export type UploadAvatarBody = {');
   });
 });

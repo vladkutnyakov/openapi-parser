@@ -60,6 +60,14 @@ export const ru = {
   'output.sectionBody': 'Тело запроса',
   'output.sectionResponse': 'Ответы',
   'output.sectionDto': 'DTO',
+  // Подписи к метаданным блока. Сами значения (статус, описание, тип контента)
+  // приходят из спеки и не переводятся — переводится только рамка вокруг них.
+  'output.copyPathTitle': 'Скопировать путь эндпоинта',
+  'output.noResponseBody': 'без тела',
+  'output.contentType': 'Тип контента, по которому сгенерирован тип',
+  'output.contentTypeOthers': (p: { list: string }) =>
+    `Тип сгенерирован по этому типу контента. Также объявлены: ${p.list}`,
+  'output.contentTypeMore': (p: { count: number }) => `+${p.count}`,
   'output.copySection': 'Копировать секцию',
   'output.copySectionTitle': 'Копирует все типы секции без комментариев',
   'output.toggleSection': 'Свернуть / развернуть секцию',

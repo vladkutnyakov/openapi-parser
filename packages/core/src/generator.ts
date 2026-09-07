@@ -13,11 +13,46 @@ import { HookRunner, type FieldSource, type GeneratorHooks, type TypeKind } from
 const INDENT = '  ';
 const MAX_DEPTH = 30;
 
-/** Один самостоятельный кусок вывода: интерфейс, тип или чисто информационный комментарий */
+/**
+ * Метаданные блока — факты об эндпоинте, а не код.
+ *
+ * Лежат отдельным полем, а не комментариями в `code`, потому что в потоке
+ * TypeScript они читаются плохо: адрес, статус и Content-Type подсвечиваются
+ * тем же тусклым цветом, что и описания полей, и теряются среди них. UI рисует
+ * их своими средствами (заголовок, бейдж, подпись), а в коде остаются только
+ * комментарии, объясняющие сам тип — имена полей и DTO.
+ *
+ * В сгенерированный текст ничего из этого не попадает, поэтому `stripComments`
+ * их больше не касается: в чужой репозиторий уезжает чистый тип.
+ */
+export interface BlockMeta {
+  /** HTTP-метод, только у заголовка эндпоинта */
+  method?: string;
+  /** Путь эндпоинта, только у заголовка */
+  path?: string;
+  /** `summary` операции из спеки — чужой текст, не переводится */
+  summary?: string;
+  /** Код ответа (или `default`), только у блоков ответов */
+  status?: string;
+  /** `description` ответа из спеки — чужой текст, не переводится */
+  description?: string;
+  /**
+   * Тип контента, по которому сгенерирован этот тип.
+   * Заполняется всегда, а не только у не-JSON: молчание читалось бы как
+   * «обычный JSON», то есть ровно как подпись, и различить было бы нельзя.
+   */
+  contentType?: string;
+  /** Остальные типы контента этого тела/ответа: пользователь должен видеть, что выбор был */
+  otherContentTypes?: string[];
+  /** Ответ без схемы (204 и подобные): у блока нет ни имени, ни кода */
+  noBody?: boolean;
+}
+
+/** Один самостоятельный кусок вывода: интерфейс, тип или чисто информационный блок */
 export interface GeneratedBlock {
   /** Имя интерфейса/типа; null для блоков без кода (заголовок эндпоинта, ответ без тела) */
   name: string | null;
-  /** Код с комментариями — как он показывается в UI */
+  /** Код с комментариями — как он показывается в UI; пустой у чисто информационных блоков */
   code: string;
   /**
    * Категория блока — по ней UI группирует вывод в секции.
@@ -25,6 +60,8 @@ export interface GeneratedBlock {
    * На текст кода не влияет — это описание блока, а не параметр генерации.
    */
   kind?: TypeKind;
+  /** Факты об эндпоинте для показа в интерфейсе; в `code` они не дублируются */
+  meta?: BlockMeta;
 }
 
 /**
@@ -80,9 +117,12 @@ export function generateBlocks(
   const opName = operationName(entry);
   const blocks: GeneratedBlock[] = [];
 
-  const header = [`// ${entry.method} ${entry.path}`];
-  if (entry.operation.summary) header.push(`// ${entry.operation.summary}`);
-  blocks.push({ name: null, code: header.join('\n') });
+  // Заголовок эндпоинта — чистые метаданные: кода в нём нет вовсе
+  blocks.push({
+    name: null,
+    code: '',
+    meta: { method: entry.method, path: entry.path, summary: entry.operation.summary },
+  });
 
   const params = collectParameters(ctx, entry);
   const pathParams = params.filter((p) => p.in === 'path');
@@ -129,14 +169,21 @@ export function generateBlocksWithErrors(
   return { blocks, errors: runner.errors };
 }
 
-/** Полный вывод одной строкой (с комментариями) */
+/**
+ * Полный вывод одной строкой (с комментариями к полям и DTO).
+ *
+ * Блоки без кода — заголовок эндпоинта и ответ без тела — пропускаются:
+ * они несут только метаданные, и склейка дала бы пустые строки.
+ */
 export function generateForEndpoint(
   spec: OpenApiSpec,
   entry: EndpointEntry,
   hooks: GeneratorHooks = {},
 ): string {
-  const blocks = generateBlocks(spec, entry, hooks);
-  return blocks.length ? blocks.map((b) => b.code).join('\n\n') + '\n' : '';
+  const code = generateBlocks(spec, entry, hooks)
+    .map((b) => b.code)
+    .filter(Boolean);
+  return code.length ? code.join('\n\n') + '\n' : '';
 }
 
 /**
@@ -252,28 +299,30 @@ function renderRequestBody(
   if (!picked?.media.schema) return null;
   const name = typeName(ctx, `${opName}Body`, 'body');
   const body = tsType(ctx, picked.media.schema, '', 0, 'optional', 'body');
-  // Комментарий уезжает в чужой репозиторий — он всегда английский (см. CLAUDE.md).
-  const comment = mediaComment(picked, resolved?.content);
-  return { name, code: `${comment}\n${declaration(ctx, name, 'body', body, false, [])}`, kind: 'body' };
+  return {
+    name,
+    code: declaration(ctx, name, 'body', body, false, []),
+    kind: 'body',
+    meta: mediaMeta(picked, resolved?.content),
+  };
 }
 
 /**
- * Строка `// Content-Type: ...` над телом запроса.
+ * Типы контента тела или ответа для показа в UI.
  *
- * Печатается всегда, а не только для не-JSON: по одному типу нельзя отличить
- * `application/json` от `multipart/form-data`, а от этого зависит, как фронт
- * отправляет запрос. Молчание тут читалось бы как «обычный JSON».
+ * `contentType` заполняется всегда, а не только для не-JSON: по одному типу
+ * нельзя отличить `application/json` от `multipart/form-data`, а от этого
+ * зависит, как фронт отправляет запрос. Молчание тут читалось бы как «обычный JSON».
  *
- * Остальные типы перечисляются рядом: сгенерирован тип ровно по одному из них,
+ * Остальные типы едут рядом: тип сгенерирован ровно по одному из них,
  * и пользователь должен видеть, что выбор был.
  */
-function mediaComment(
+function mediaMeta(
   picked: PickedMedia,
   content: Record<string, MediaTypeObject> | undefined,
-): string {
+): BlockMeta {
   const others = Object.keys(content ?? {}).filter((k) => k !== picked.key);
-  const rest = others.length ? ` (also: ${others.join(', ')})` : '';
-  return `// Content-Type: ${picked.key}${rest}`;
+  return { contentType: picked.key, ...(others.length ? { otherContentTypes: others } : {}) };
 }
 
 function renderResponses(
@@ -288,22 +337,23 @@ function renderResponses(
       ? (resolveJsonPointer(ctx.spec, rawResponse.$ref) as ResponseObject | undefined)
       : rawResponse;
     const suffix = status === 'default' ? 'Default' : status;
-    const comment = `// ${status}${response?.description ? `: ${response.description}` : ''}`;
+    const base: BlockMeta = { status, ...(response?.description ? { description: response.description } : {}) };
     const picked = pickJsonMedia(response?.content);
     if (picked?.media.schema) {
       const name = typeName(ctx, `${opName}Response${suffix}`, 'response', status);
       const body = tsType(ctx, picked.media.schema, '', 0, 'nullable', 'response');
-      const alias = declaration(ctx, name, 'response', body, false, []);
       // Content-Type ответа значим не меньше, чем у запроса: text/csv или
       // application/octet-stream по одному типу от JSON не отличить.
-      const media = mediaComment(picked, response?.content);
-      blocks.push({ name, code: `${comment}\n${media}\n${alias}`, kind: 'response' });
+      blocks.push({
+        name,
+        code: declaration(ctx, name, 'response', body, false, []),
+        kind: 'response',
+        meta: { ...base, ...mediaMeta(picked, response?.content) },
+      });
     } else {
-      // Комментарий уезжает в код, который пользователь вставляет к себе в репозиторий:
-      // он всегда английский и от языка интерфейса не зависит.
-      // kind проставлен и здесь, хотя имени нет: иначе «204 — без тела» выпал бы
-      // из секции ответов, а это как раз тот факт, который пользователь там ищет.
-      blocks.push({ name: null, code: `${comment} — no response body`, kind: 'response' });
+      // kind проставлен и здесь, хотя ни имени, ни кода нет: иначе «204 — без тела»
+      // выпал бы из секции ответов, а это как раз тот факт, который там ищут.
+      blocks.push({ name: null, code: '', kind: 'response', meta: { ...base, noBody: true } });
     }
   }
   return blocks;

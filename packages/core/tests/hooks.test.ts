@@ -133,8 +133,8 @@ describe('хуки меняют вывод', () => {
     const out = genFromCode('get /users/{id}', `({ docs() { return [] } })`);
     expect(out).not.toContain('/**');
     expect(out).not.toContain('format: date-time');
-    // заголовок эндпоинта — не JSDoc, он остаётся
-    expect(out).toContain('// GET /users/{id}');
+    // хук гасит только документацию — сами типы генерируются как обычно
+    expect(out).toContain('export interface UserResponseDto {');
   });
 
   it('undefined из хука = поведение по умолчанию', () => {
