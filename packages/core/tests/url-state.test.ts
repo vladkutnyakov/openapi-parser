@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { buildHash, parseHash, type UrlState } from '../src/url-state';
 
 describe('parseHash', () => {
-  it('полный hash: эндпоинт, метод, поиск', () => {
-    expect(parseHash('#/users/{id}?m=GET&q=user')).toEqual({
+  it('полный hash: эндпоинт, фильтр, поиск', () => {
+    expect(parseHash('#/users/{id}?m=GET&f=GET&q=user')).toEqual({
       endpointId: 'get /users/{id}',
       search: 'user',
       method: 'GET',
@@ -14,8 +14,18 @@ describe('parseHash', () => {
     expect(parseHash('#/users?m=POST')).toEqual({
       endpointId: 'post /users',
       search: '',
-      method: 'POST',
+      method: 'ALL',
     });
+  });
+
+  it('метод эндпоинта не становится фильтром списка', () => {
+    // иначе открытие сохранённого эндпоинта молча выставляло бы дропдаун в его метод
+    expect(parseHash('#/users?m=POST').method).toBe('ALL');
+    expect(parseHash('#/users?m=POST&f=GET').method).toBe('GET');
+  });
+
+  it('фильтр без выбранного эндпоинта', () => {
+    expect(parseHash('#?f=DELETE')).toEqual({ endpointId: '', search: '', method: 'DELETE' });
   });
 
   it('только поиск, без выбранного эндпоинта', () => {
@@ -33,7 +43,7 @@ describe('parseHash', () => {
 
   it('метод в любом регистре', () => {
     expect(parseHash('#/users?m=get').endpointId).toBe('get /users');
-    expect(parseHash('#/users?m=get').method).toBe('GET');
+    expect(parseHash('#?f=get').method).toBe('GET');
   });
 
   it('декодирует закодированные символы', () => {
@@ -42,15 +52,15 @@ describe('parseHash', () => {
   });
 
   it('не падает на мусоре', () => {
-    expect(() => parseHash('#%%%?m=&q=')).not.toThrow();
-    expect(parseHash('#%E0%A4%A?m=GET').method).toBe('GET');
+    expect(() => parseHash('#%%%?m=&f=&q=')).not.toThrow();
+    expect(parseHash('#%E0%A4%A?f=GET').method).toBe('GET');
   });
 });
 
 describe('buildHash', () => {
-  it('собирает путь, метод и поиск', () => {
+  it('собирает путь, метод, фильтр и поиск', () => {
     const hash = buildHash({ endpointId: 'get /users/{id}', search: 'user', method: 'GET' });
-    expect(hash).toBe('/users/%7Bid%7D?m=GET&q=user');
+    expect(hash).toBe('/users/%7Bid%7D?m=GET&f=GET&q=user');
   });
 
   it('опускает пустые значения', () => {
@@ -60,7 +70,11 @@ describe('buildHash', () => {
   });
 
   it('фильтр по методу сохраняется и без выбранного эндпоинта', () => {
-    expect(buildHash({ endpointId: '', search: '', method: 'POST' })).toBe('?m=POST');
+    expect(buildHash({ endpointId: '', search: '', method: 'POST' })).toBe('?f=POST');
+  });
+
+  it('выбранный эндпоинт не подмешивает свой метод в фильтр', () => {
+    expect(buildHash({ endpointId: 'post /users', search: '', method: 'ALL' })).toBe('/users?m=POST');
   });
 
   it('экранирует спецсимволы в поиске', () => {
@@ -73,6 +87,10 @@ describe('round-trip', () => {
   const states: UrlState[] = [
     { endpointId: 'get /users/{id}', search: 'user', method: 'GET' },
     { endpointId: 'post /users', search: '', method: 'POST' },
+    // эндпоинт выбран, а фильтр списка не задан — случай, ради которого разведены ключи
+    { endpointId: 'post /users', search: '', method: 'ALL' },
+    // фильтр не совпадает с методом эндпоинта
+    { endpointId: 'get /users', search: 'user', method: 'DELETE' },
     { endpointId: '', search: 'a&b c=d', method: 'ALL' },
     { endpointId: '', search: '', method: 'DELETE' },
     { endpointId: 'patch /orders/{orderId}/items/{itemId}', search: 'order', method: 'PATCH' },

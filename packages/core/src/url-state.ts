@@ -1,4 +1,4 @@
-// Состояние навигации в hash-части URL: #/users/{id}?m=GET&q=user
+// Состояние навигации в hash-части URL: #/users/{id}?m=GET&f=POST&q=user
 // Hash, а не History API — чтобы не требовался серверный fallback на index.html.
 
 export interface UrlState {
@@ -22,12 +22,13 @@ export function parseHash(hash: string): UrlState {
   const params = new URLSearchParams(queryPart);
   const path = safeDecode(pathPart);
   const method = (params.get('m') ?? '').trim().toUpperCase();
+  const filter = (params.get('f') ?? '').trim().toUpperCase();
   const search = params.get('q') ?? '';
 
   return {
     endpointId: path && method ? `${method.toLowerCase()} ${path}` : '',
     search,
-    method: method || 'ALL',
+    method: filter || 'ALL',
   };
 }
 
@@ -35,9 +36,10 @@ export function buildHash(state: UrlState): string {
   const { path, method } = splitEndpointId(state.endpointId);
 
   const params = new URLSearchParams();
-  // метод пишем и когда эндпоинт не выбран — это ещё и фильтр списка
-  const methodValue = method || (state.method && state.method !== 'ALL' ? state.method : '');
-  if (methodValue) params.set('m', methodValue);
+  // метод эндпоинта и фильтр списка — разные факты и едут в разных ключах.
+  // В одном ключе выбор эндпоинта молча выставлял бы фильтр в его метод.
+  if (method) params.set('m', method);
+  if (state.method && state.method !== 'ALL') params.set('f', state.method);
   if (state.search) params.set('q', state.search);
 
   const query = params.toString();
