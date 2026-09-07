@@ -26,6 +26,8 @@ The editor reads the spec itself, so there is no CORS to fight and no dev server
 
 **Readable output.** Types come out grouped into collapsible sections — path parameters, query parameters, request body, responses, DTOs — each with its own copy button, so an endpoint pulling in a dozen transitive DTOs is not a wall of code. Ctrl+F searches the output: every match is highlighted, Enter and Shift+Enter step through them, and a match inside a collapsed section expands it.
 
+**Facts about the endpoint, outside the code.** Method, path and summary head the output, and each response carries its status and description — drawn by the panel rather than buried in comments, which read as dim as field docs. Click the path to copy it. Alongside the request body and every response sits its Content-Type: generated TypeScript looks identical for `multipart/form-data` and JSON, yet the difference decides how your client sends the request. When several media types are on offer, the others are listed too — the type comes from exactly one of them.
+
 **Type comparison.** Paste a type from your codebase and the panel shows, field by field, where it drifted from the contract: missing field, extra field, different type, different optionality. The comparison is semantic — field order, formatting, semicolons, quote style and union member order are not differences. Optionality is strict, though: `?:` and `| null` are not the same thing.
 
 **Specs behind a login.** If the source redirects to a login form, the panel offers a sign-in link and a field for your session cookie. The cookie goes to VSCode's `SecretStorage` — never to `localStorage`, never back into the webview.

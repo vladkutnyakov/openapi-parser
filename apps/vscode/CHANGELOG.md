@@ -5,6 +5,33 @@ All notable changes to this extension are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-07
+
+### Added
+
+- The endpoint's method, path and summary, along with each response's status and
+  description, are now drawn as part of the panel instead of comments inside the
+  generated TypeScript, where they took the same dim color as field docs and got
+  lost in the type. Clicking the path copies it.
+- Content-Type of the request body and of every response is shown next to the
+  type. Generated TypeScript looks the same for `multipart/form-data` as it does
+  for JSON, so the wire format used to be invisible — and it decides how the
+  client actually sends the request. When a body or response offers several media
+  types, the others are listed too, since the type is generated from exactly one
+  of them.
+
+### Changed
+
+- The Load button is now a refresh icon that spins while the spec is loading, in
+  place of its three text labels. The label is kept as a tooltip and for screen
+  readers.
+
+### Fixed
+
+- Restoring an endpoint no longer sets the method filter to that endpoint's
+  method: the two shared one key in the saved state. Endpoints saved before this
+  release still restore, with the filter reset to ALL.
+
 ## [1.2.0] - 2026-09-04
 
 ### Added
