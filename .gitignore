@@ -46,3 +46,10 @@ __screenshots__/
 package-lock.json
 
 *.vsix
+
+# Сборка расширения VSCode: out/ — бандл esbuild, media/ — сборка webview
+# (её чистит vite через emptyOutDir), stage/ — временная папка упаковки vsce.
+# Пути полные, а не общие out/media: рядом в assets/ лежат отслеживаемые иконки.
+apps/vscode/out
+apps/vscode/media
+apps/vscode/stage
