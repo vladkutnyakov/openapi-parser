@@ -5,6 +5,35 @@ All notable changes to this extension are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-09
+
+### Added
+
+- Loading a spec is now visible where you are looking: a progress bar along the
+  source bar, a status line naming the source being loaded, and the endpoint list
+  dimmed and click-blocked until it matches that source. The spinning reload icon
+  alone sits in a corner, and switching sources looked like nothing had happened.
+- Network loads have a 120-second limit and report the source as the thing that
+  went quiet. Previously the only limit was the panel waiting on the extension,
+  so a slow backend was reported as the extension failing to answer.
+
+### Changed
+
+- Long specs scroll and resize smoothly: only the visible rows of the endpoint
+  list are rendered. On a 2000-endpoint spec, dragging the sidebar edge cost 79 ms
+  per step and now costs 1.5 ms.
+
+### Fixed
+
+- Switching the source while a spec is still loading cancels the first load.
+  Pressing Enter or picking from history started a second load over the first, and
+  whichever answered last won — so the panel could quietly end up showing a spec
+  from the source you had just navigated away from.
+- The gap between the endpoint list and the output is gone; the resize handle now
+  overlays the border instead of holding a column of its own.
+- The header above the endpoint list and the one above the output are the same
+  height, so the border under them no longer steps.
+
 ## [1.3.0] - 2026-09-07
 
 ### Added
