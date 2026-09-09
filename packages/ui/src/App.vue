@@ -126,6 +126,7 @@ function startResize(e: PointerEvent) {
         v-model:method="method"
         :endpoints="endpoints"
         :selected-id="selectedId"
+        :loading="loading"
         @select="(e) => (selectedId = e.id)"
       />
       <div

@@ -6,6 +6,7 @@ import { t } from '../i18n';
 const props = defineProps<{
   endpoints: EndpointEntry[];
   selectedId: string;
+  loading: boolean;
 }>();
 
 const emit = defineEmits<{ select: [entry: EndpointEntry] }>();
@@ -60,10 +61,22 @@ watch(
       </select>
     </div>
 
-    <p v-if="!endpoints.length" class="empty">{{ t('endpoints.empty') }}</p>
+    <!--
+      Первая загрузка: списка ещё нет, и «Загрузите спеку» в этот момент читалось бы
+      как «ничего не происходит». Скелетон здесь был бы враньём о количестве строк —
+      сколько их будет, мы не знаем, — поэтому обычная подпись с пульсацией.
+    -->
+    <p v-if="loading && !endpoints.length" class="empty empty--loading">{{ t('endpoints.loading') }}</p>
+    <p v-else-if="!endpoints.length" class="empty">{{ t('endpoints.empty') }}</p>
     <p v-else-if="!filtered.length" class="empty">{{ t('endpoints.notFound') }}</p>
 
-    <ul v-else ref="listRef" class="items">
+    <!--
+      Повторная загрузка: список остаётся на месте, но гасится и перестаёт принимать
+      клики. Иначе видны эндпоинты прежней спеки, и непонятно, применилась смена
+      источника или нет; выбор из погашенного списка всё равно затёрся бы приходом
+      новой спеки.
+    -->
+    <ul v-else ref="listRef" class="items" :class="{ 'items--stale': loading }">
       <li v-for="e in filtered" :key="e.id">
         <button
           class="item"
@@ -123,11 +136,38 @@ watch(
   color: var(--muted);
   font-size: 13px;
 }
+/* мягкая пульсация: подпись сама сообщает, что процесс идёт, а не завис */
+.empty--loading {
+  animation: endpoints-pulse 1.6s ease-in-out infinite;
+}
+@keyframes endpoints-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
 .items {
   margin: 0;
   padding: 6px;
   list-style: none;
   overflow-y: auto;
+  transition: opacity 0.2s ease;
+}
+/*
+ * Список прежней спеки на время загрузки новой: гаснет и не принимает клики.
+ * Плавность объявлена на .items, а не здесь, — иначе снятие класса убирало бы и
+ * саму transition, и возврат к рабочему виду происходил бы рывком.
+ */
+.items--stale {
+  opacity: 0.45;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .empty--loading {
+    animation: none;
+  }
+  .items {
+    transition: none;
+  }
 }
 .item {
   display: flex;

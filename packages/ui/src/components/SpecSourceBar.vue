@@ -311,6 +311,18 @@ function highlight(text: string): { text: string; match: boolean }[] {
         {{ theme === 'dark' ? '☀️' : '🌙' }}
       </button>
     </div>
+    <!--
+      Полоса неопределённого прогресса на нижней границе панели. Загрузка иначе
+      видна только вращением иконки в кнопке 34×34 — в углу экрана, куда никто не
+      смотрит; движение через всю ширину заметно периферийным зрением.
+
+      position: absolute поверх бордера, а не элемент в потоке: появление полосы не
+      должно сдвигать разметку под ней. Высота 2px совпадает с бордером, поэтому
+      полоса читается как подсветившаяся граница панели, а не как новый элемент.
+    -->
+    <div v-if="loading" class="progress" role="progressbar" :aria-label="t('load.progress')">
+      <div class="progress__bar" />
+    </div>
     <p v-if="error" class="status status--error">{{ error }}</p>
     <div v-if="authPrompt" class="auth">
       <p class="auth__hint">
@@ -344,6 +356,12 @@ function highlight(text: string): { text: string; match: boolean }[] {
         </button>
       </div>
     </div>
+    <!--
+      Во время загрузки строка статуса называет источник, а не прежнюю спеку:
+      иначе при смене источника внизу панели продолжало бы висеть название той,
+      что уже не имеет отношения к происходящему.
+    -->
+    <p v-else-if="loading" class="status status--loading">{{ t('load.status', { source: model }) }}</p>
     <p v-else-if="spec" class="status status--ok">
       <!-- title — из самой спеки, то есть текст бэкенда: не переводится -->
       {{ spec.info?.title ?? t('spec.untitled') }}<template v-if="spec.info?.version"> v{{ spec.info.version }}</template>
@@ -354,9 +372,70 @@ function highlight(text: string): { text: string; match: boolean }[] {
 
 <style scoped>
 .spec-bar {
+  /* контекст позиционирования для полосы прогресса на нижней границе */
+  position: relative;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+}
+/*
+ * Дорожка полосы прогресса. Лежит поверх нижнего бордера панели (bottom: -1px),
+ * поэтому появление ничего не сдвигает, а сама полоса читается как подсветившаяся
+ * граница. overflow скрывает бегунок за краями дорожки.
+ */
+.progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  overflow: hidden;
+}
+/*
+ * След дорожки. Отдельным слоем с opacity, а не color-mix по --accent: значение
+ * переменной приезжает из темы редактора и в вебе, и в панели VSCode, а прозрачность
+ * поверх готового цвета работает одинаково в любом движке. Полоса не должна
+ * выглядеть как вторая граница, пока по ней ничего не бежит.
+ */
+.progress::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  opacity: 0.18;
+}
+.progress__bar {
+  /* над следом дорожки: ::before идёт в потоке позже и без этого перекрыл бы бегунок */
+  position: relative;
+  width: 40%;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--accent);
+  animation: progress-slide 1.1s ease-in-out infinite;
+}
+/*
+ * Бегунок уходит за оба края: старт и финиш за пределами дорожки, поэтому цикл
+ * не выглядит как рывок от края до края. Проценты по ширине самого бегунка,
+ * отсюда -100% слева и 250% справа (дорожка / ширина бегунка = 2.5).
+ */
+@keyframes progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+/*
+ * У кого выключены анимации, бегущая полоса отвлекала бы. Показываем ровную
+ * заливку: факт загрузки виден, движения нет. Дублирует поведение спиннера кнопки.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .progress__bar {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
+  }
 }
 .row {
   display: flex;
@@ -558,6 +637,14 @@ function highlight(text: string): { text: string; match: boolean }[] {
 }
 .status--ok {
   color: var(--muted);
+}
+/* акцентом, а не приглушённым: это активное состояние, а не спокойная сводка */
+.status--loading {
+  color: var(--accent);
+  /* источник бывает длинным URL — в одну строку с обрезкой, чтобы шапка не росла */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .auth {
   margin-top: 8px;

@@ -17,6 +17,8 @@ export const en: Messages = {
   'load.loading': 'Loading…',
   'load.refresh': 'Reload',
   'load.load': 'Load',
+  'load.status': (p) => `Loading ${p.source}…`,
+  'load.progress': 'Loading the spec',
   'rules.open': 'Type generation rules',
   'theme.light': 'Light theme',
   'theme.dark': 'Dark theme',
@@ -35,6 +37,7 @@ export const en: Messages = {
   // ---------------------------------------------------------------- список эндпоинтов
   'endpoints.search': 'Search: /users/{id}, operationId…',
   'endpoints.empty': 'Load a spec to see its endpoints',
+  'endpoints.loading': 'Loading the spec…',
   'endpoints.notFound': 'Nothing found',
 
   // ---------------------------------------------------------------- вывод типов
