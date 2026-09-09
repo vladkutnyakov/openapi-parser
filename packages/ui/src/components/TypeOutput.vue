@@ -601,8 +601,11 @@ onBeforeUnmount(() => {
 .copy-btn:hover {
   border-color: var(--accent);
 }
+/* высота от общего токена: шапка вывода обязана совпадать с шапкой сайдбара,
+   иначе горизонтальная граница под ними идёт с перепадом */
 .copy-btn--all {
-  padding: 6px 14px;
+  height: var(--control-height);
+  padding: 0 14px;
   font-weight: 600;
 }
 .copy-btn--active {

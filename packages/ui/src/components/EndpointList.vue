@@ -97,7 +97,8 @@ watch(
 .search {
   flex: 1;
   min-width: 0;
-  padding: 6px 10px;
+  height: var(--control-height);
+  padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
@@ -109,7 +110,8 @@ watch(
   border-color: var(--accent);
 }
 .method-filter {
-  padding: 6px;
+  height: var(--control-height);
+  padding: 0 6px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);

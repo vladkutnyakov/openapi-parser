@@ -41,6 +41,7 @@ var vscode3 = __toESM(require("vscode"));
 var import_node_path3 = require("node:path");
 
 // shared/protocol.ts
+var LOAD_SPEC_TIMEOUT_MS = 12e4;
 var STATE_GLOBAL = "__OPENAPI_PARSER_STATE__";
 var ENV_GLOBAL = "__OPENAPI_PARSER_ENV__";
 
@@ -60,6 +61,7 @@ function technicalError(e) {
 }
 
 // ../../packages/core/src/node/spec-loader.ts
+var DEFAULT_FETCH_TIMEOUT_MS = 12e4;
 function originOf(url) {
   try {
     return new URL(url).origin;
@@ -72,10 +74,11 @@ async function loadSpecFromSource(source, deps) {
   if (!target) return { kind: "error", status: 400, code: "source.empty" };
   const readFile = deps.readFile ?? ((path) => (0, import_promises.readFile)(path, "utf-8"));
   const doFetch = deps.fetchImpl ?? fetch;
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
   let text;
   try {
     if (/^https?:\/\//i.test(target)) {
-      const remote = await fetchSpecText(target, doFetch, deps.getCookie);
+      const remote = await fetchSpecText(target, doFetch, deps.getCookie, timeoutMs);
       if (remote.kind !== "ok") return remote;
       text = remote.text;
     } else {
@@ -90,12 +93,43 @@ async function loadSpecFromSource(source, deps) {
     return { kind: "error", status: 422, code: "source.notJson" };
   }
 }
-async function fetchSpecText(source, doFetch, getCookie) {
+async function fetchSpecText(source, doFetch, getCookie, timeoutMs) {
   const origin = originOf(source);
   const headers = { accept: "application/json" };
   const cookie = await getCookie(origin);
   if (cookie) headers.cookie = cookie;
-  const r = await doFetch(source, { headers, redirect: "manual" });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchWithin(source, doFetch, headers, controller.signal);
+  } catch (e) {
+    if (controller.signal.aborted) {
+      return {
+        kind: "error",
+        status: 504,
+        code: "source.timeout",
+        params: { seconds: Math.round(timeoutMs / 1e3) }
+      };
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function race(promise, signal) {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  let onAbort;
+  return Promise.race([
+    promise,
+    new Promise((_resolve, reject) => {
+      onAbort = () => reject(signal.reason);
+      signal.addEventListener("abort", onAbort, { once: true });
+    })
+  ]).finally(() => signal.removeEventListener("abort", onAbort));
+}
+async function fetchWithin(source, doFetch, headers, signal) {
+  const r = await doFetch(source, { headers, redirect: "manual", signal });
+  const origin = originOf(source);
   const location = r.headers.get("location") ?? "";
   const contentType = r.headers.get("content-type") ?? "";
   const redirectedAway = r.status >= 300 && r.status < 400 && !!location;
@@ -115,7 +149,7 @@ async function fetchSpecText(source, doFetch, getCookie) {
       params: { status: r.status, statusText: r.statusText }
     };
   }
-  const text = await r.text();
+  const text = await race(r.text(), signal);
   if (!/json/i.test(contentType) && text.trimStart().startsWith("<")) {
     return {
       kind: "needs-auth",
@@ -135,7 +169,8 @@ var SpecService = class {
   }
   async load(source) {
     const outcome = await loadSpecFromSource(this.toAbsolute(source), {
-      getCookie: (origin) => this.secrets.get(SECRET_PREFIX + origin)
+      getCookie: (origin) => this.secrets.get(SECRET_PREFIX + origin),
+      timeoutMs: LOAD_SPEC_TIMEOUT_MS
     });
     if (outcome.kind === "ok") return { ok: true, spec: outcome.spec };
     if (outcome.kind === "needs-auth") {
