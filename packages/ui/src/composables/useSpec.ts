@@ -54,17 +54,40 @@ export function useSpec() {
     hostStorage.set(RECENT_KEY, serializeRecentSources(list));
   }
 
+  /*
+   * Смена источника на полпути запускает вторую загрузку поверх первой (Enter в строке
+   * ввода и выбор из истории кнопкой не блокируются). Без учёта поколений побеждала бы
+   * та, что ответила последней, — то есть медленный прежний источник молча затирал бы
+   * актуальный, и в списке оказывалась бы спека не того URL.
+   *
+   * Счётчик, а не сравнение с source.value: пользователь может вернуться к прежнему
+   * адресу, и по строке два запроса стали бы неотличимы.
+   */
+  let generation = 0;
+  // контроллер текущей загрузки: новый вызов обрывает предыдущую по-настоящему,
+  // чтобы не держать соединение и не грузить бэкенд впустую
+  let inFlight: AbortController | null = null;
+
   async function load() {
     const target = source.value.trim();
     if (!target) {
       errorPayload.value = { code: 'source.required' };
       return;
     }
+
+    inFlight?.abort();
+    const controller = new AbortController();
+    inFlight = controller;
+    const mine = ++generation;
+    const stale = () => mine !== generation;
+
     loading.value = true;
     errorPayload.value = null;
     authPrompt.value = null;
     try {
-      const result = await getHost().loadSpec(target);
+      const result = await getHost().loadSpec(target, controller.signal);
+      // нас обогнала более свежая загрузка — её результат уже на экране, молчим
+      if (stale()) return;
       if (!result.ok) {
         if (result.needsAuth && result.loginUrl) {
           authPrompt.value = { loginUrl: result.loginUrl, origin: result.origin ?? '' };
@@ -79,13 +102,20 @@ export function useSpec() {
       // в историю пишем только то, что реально загрузилось: опечатки в ней не нужны
       saveRecent(addRecentSource(recent.value, target));
     } catch (e) {
+      // Отменённая загрузка возвращается сюда же с кодом отмены или таймаута.
+      // Показывать это нельзя: пользователь уже ушёл на другой источник, и ошибка
+      // затёрла бы его результат.
+      if (stale()) return;
       spec.value = null;
       endpoints.value = [];
       // сюда же приходит SpecError из buildEndpointIndex — форма payload у них общая
       errorPayload.value =
         e instanceof SpecError ? { code: e.code, params: e.params } : technicalError(e);
     } finally {
-      loading.value = false;
+      // индикатор снимает только актуальная загрузка: иначе он погас бы на ответе
+      // прежней, пока текущая ещё идёт
+      if (!stale()) loading.value = false;
+      if (inFlight === controller) inFlight = null;
     }
   }
 

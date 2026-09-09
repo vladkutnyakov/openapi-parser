@@ -17,6 +17,7 @@ export const ALL_SPEC_ERROR_CODES = [
   'source.notJson',
   'source.serverStatus', // { status, statusText } — statusText от бэкенда
   'source.timeout', // { seconds } — источник не ответил за отведённое время
+  'source.aborted', // загрузку оборвали снаружи: пользователь сменил источник
   'source.needsAuth',
   'source.needsAuthHtml',
   // транспорт веб-оболочки

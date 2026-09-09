@@ -64,7 +64,11 @@ function listen() {
  * человек у нативного диалога: таймаут страхует от молча упавшего обработчика,
  * а здесь host отвечает в любом случае — весь dispatch обёрнут в try/catch.
  */
-function request(message: WebviewRequestBody, timeoutMs = REQUEST_TIMEOUT_MS): Promise<unknown> {
+function request(
+  message: WebviewRequestBody,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+  signal?: AbortSignal,
+): Promise<unknown> {
   listen();
   const id = String(nextId++);
   return new Promise((resolve, reject) => {
@@ -76,13 +80,29 @@ function request(message: WebviewRequestBody, timeoutMs = REQUEST_TIMEOUT_MS): P
         }, timeoutMs)
       : undefined;
 
+    // Отмена уезжает отдельным сообщением: host обрывает загрузку у себя, а мы
+    // перестаём ждать ответ. Слушатель снимается вместе с записью в pending.
+    const onAbort = () => {
+      pending.delete(id);
+      clearTimeout(timer);
+      getApi().postMessage({ type: 'cancel', cancelId: id, id: String(nextId++) } as WebviewRequest);
+      reject(new SpecError('source.aborted'));
+    };
+    if (signal?.aborted) return onAbort();
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+
     pending.set(id, {
       resolve: (value) => {
-        clearTimeout(timer);
+        done();
         resolve(value);
       },
       reject: (reason) => {
-        clearTimeout(timer);
+        done();
         reject(reason);
       },
     });
@@ -120,11 +140,12 @@ export function createVscodeHost(): HostBridge {
 
     locale: envSnapshot().locale,
 
-    async loadSpec(source: string): Promise<SpecLoadResult> {
+    async loadSpec(source: string, signal?: AbortSignal): Promise<SpecLoadResult> {
       try {
         return (await request(
           { type: 'loadSpec', source },
           LOAD_SPEC_WAIT_MS,
+          signal,
         )) as LoadSpecPayload as SpecLoadResult;
       } catch (e) {
         return toFailure(e);

@@ -12,9 +12,9 @@ export function createWebHost(): HostBridge {
     // navigator.language бывает 'ru-RU', 'ru', 'en-GB' — приводим к нашим двум
     locale: navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en',
 
-    async loadSpec(source: string): Promise<SpecLoadResult> {
+    async loadSpec(source: string, signal?: AbortSignal): Promise<SpecLoadResult> {
       try {
-        const res = await fetch(`/__spec?source=${encodeURIComponent(source)}`);
+        const res = await fetch(`/__spec?source=${encodeURIComponent(source)}`, { signal });
         // не res.json(): при 304/HTML-фоллбэке тело не JSON, и разбор упал бы
         // невнятным «Unexpected token '<'» вместо статуса ответа
         const raw = await res.text();
@@ -46,6 +46,9 @@ export function createWebHost(): HostBridge {
         }
         return { ok: true, spec: data };
       } catch (e) {
+        // отменённый fetch бросает — без этой ветки смена источника выглядела бы
+        // техническим сбоем с сырым «The user aborted a request»
+        if (signal?.aborted) return { ok: false, code: 'source.aborted' };
         return { ok: false, ...technicalError(e) };
       }
     },

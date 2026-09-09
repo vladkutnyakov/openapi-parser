@@ -75,10 +75,11 @@ async function loadSpecFromSource(source, deps) {
   const readFile = deps.readFile ?? ((path) => (0, import_promises.readFile)(path, "utf-8"));
   const doFetch = deps.fetchImpl ?? fetch;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
+  if (deps.signal?.aborted) return abortedOutcome();
   let text;
   try {
     if (/^https?:\/\//i.test(target)) {
-      const remote = await fetchSpecText(target, doFetch, deps.getCookie, timeoutMs);
+      const remote = await fetchSpecText(target, doFetch, deps.getCookie, timeoutMs, deps.signal);
       if (remote.kind !== "ok") return remote;
       text = remote.text;
     } else {
@@ -93,16 +94,22 @@ async function loadSpecFromSource(source, deps) {
     return { kind: "error", status: 422, code: "source.notJson" };
   }
 }
-async function fetchSpecText(source, doFetch, getCookie, timeoutMs) {
+function abortedOutcome() {
+  return { kind: "error", status: 499, code: "source.aborted" };
+}
+async function fetchSpecText(source, doFetch, getCookie, timeoutMs, external) {
   const origin = originOf(source);
-  const headers = { accept: "application/json" };
-  const cookie = await getCookie(origin);
-  if (cookie) headers.cookie = cookie;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const relay = () => controller.abort();
+  external?.addEventListener("abort", relay, { once: true });
   try {
+    const headers = { accept: "application/json" };
+    const cookie = await getCookie(origin);
+    if (cookie) headers.cookie = cookie;
     return await fetchWithin(source, doFetch, headers, controller.signal);
   } catch (e) {
+    if (external?.aborted) return abortedOutcome();
     if (controller.signal.aborted) {
       return {
         kind: "error",
@@ -114,6 +121,7 @@ async function fetchSpecText(source, doFetch, getCookie, timeoutMs) {
     throw e;
   } finally {
     clearTimeout(timer);
+    external?.removeEventListener("abort", relay);
   }
 }
 function race(promise, signal) {
@@ -128,6 +136,7 @@ function race(promise, signal) {
   ]).finally(() => signal.removeEventListener("abort", onAbort));
 }
 async function fetchWithin(source, doFetch, headers, signal) {
+  if (signal.aborted) throw signal.reason;
   const r = await doFetch(source, { headers, redirect: "manual", signal });
   const origin = originOf(source);
   const location = r.headers.get("location") ?? "";
@@ -167,10 +176,11 @@ var SpecService = class {
   constructor(secrets) {
     this.secrets = secrets;
   }
-  async load(source) {
+  async load(source, signal) {
     const outcome = await loadSpecFromSource(this.toAbsolute(source), {
       getCookie: (origin) => this.secrets.get(SECRET_PREFIX + origin),
-      timeoutMs: LOAD_SPEC_TIMEOUT_MS
+      timeoutMs: LOAD_SPEC_TIMEOUT_MS,
+      signal
     });
     if (outcome.kind === "ok") return { ok: true, spec: outcome.spec };
     if (outcome.kind === "needs-auth") {
@@ -434,6 +444,12 @@ var SpecPanel = class _SpecPanel {
   }
   disposables = [];
   specs;
+  /**
+   * Активные загрузки: id запроса → способ его оборвать. Нужны, чтобы смена
+   * источника прекращала предыдущую загрузку, а не оставляла её тянуть спеку
+   * в пустоту. Запись живёт ровно столько, сколько сам запрос.
+   */
+  loading = /* @__PURE__ */ new Map();
   dispose() {
     _SpecPanel.current = void 0;
     this.panel.dispose();
@@ -458,8 +474,19 @@ var SpecPanel = class _SpecPanel {
   }
   async dispatch(msg) {
     switch (msg.type) {
-      case "loadSpec":
-        return this.specs.load(msg.source);
+      case "loadSpec": {
+        const controller = new AbortController();
+        this.loading.set(msg.id, controller);
+        try {
+          return await this.specs.load(msg.source, controller.signal);
+        } finally {
+          this.loading.delete(msg.id);
+        }
+      }
+      case "cancel": {
+        this.loading.get(msg.cancelId)?.abort();
+        return { ok: true };
+      }
       case "saveAuthCookie":
         await this.specs.saveCookie(msg.origin, msg.cookie);
         return { ok: true };

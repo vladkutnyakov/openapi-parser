@@ -49,7 +49,12 @@ export interface HostBridge {
    * Это только предположение — сохранённый выбор пользователя важнее.
    */
   readonly locale: Locale;
-  loadSpec(source: string): Promise<SpecLoadResult>;
+  /**
+   * `signal` необязателен: реализация вправе его игнорировать, и вызов без него
+   * остаётся валидным. Нужен, чтобы смена источника обрывала предыдущую загрузку,
+   * а не оставляла её тянуть спеку в пустоту.
+   */
+  loadSpec(source: string, signal?: AbortSignal): Promise<SpecLoadResult>;
   saveAuthCookie(
     origin: string,
     cookie: string,

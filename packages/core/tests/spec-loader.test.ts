@@ -30,6 +30,18 @@ function fetchReturning(res: Response, spy?: (url: string, init: RequestInit) =>
   }) as unknown as typeof fetch;
 }
 
+/** Молчащий бэкенд: отвечает только на отмену, как настоящий fetch */
+function fetchHanging(spy?: (init: RequestInit) => void) {
+  return ((_url: string, init: RequestInit) => {
+    spy?.(init);
+    return new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () =>
+        reject(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })),
+      );
+    });
+  }) as unknown as typeof fetch;
+}
+
 describe('loadSpecFromSource: источник с диска', () => {
   it('читает и разбирает файл', async () => {
     const outcome = await loadSpecFromSource(FIXTURE, noCookies);
@@ -142,18 +154,6 @@ describe('loadSpecFromSource: распознавание авторизации'
 });
 
 describe('loadSpecFromSource: таймаут сетевой загрузки', () => {
-  /** Молчащий бэкенд: отвечает только на отмену, как настоящий fetch */
-  function fetchHanging(spy?: (init: RequestInit) => void) {
-    return ((_url: string, init: RequestInit) => {
-      spy?.(init);
-      return new Promise<Response>((_resolve, reject) => {
-        init.signal?.addEventListener('abort', () =>
-          reject(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })),
-        );
-      });
-    }) as unknown as typeof fetch;
-  }
-
   it('молчащий источник даёт source.timeout, а не общий technical', async () => {
     const outcome = await loadSpecFromSource('http://api.test/spec', {
       ...noCookies,
@@ -217,6 +217,80 @@ describe('loadSpecFromSource: таймаут сетевой загрузки', (
   it('чтение с диска лимита не касается', async () => {
     const outcome = await loadSpecFromSource(FIXTURE, { ...noCookies, timeoutMs: 1 });
     expect(outcome.kind).toBe('ok');
+  });
+});
+
+describe('loadSpecFromSource: отмена снаружи', () => {
+  it('сигнал, оборванный до вызова, до сети не доходит', async () => {
+    let called = false;
+    const outcome = await loadSpecFromSource('http://api.test/spec', {
+      ...noCookies,
+      signal: AbortSignal.abort(),
+      fetchImpl: fetchHanging(() => (called = true)),
+    });
+    expect(called).toBe(false);
+    expect(outcome.kind).toBe('error');
+    if (outcome.kind !== 'error') return;
+    expect(outcome.code).toBe('source.aborted');
+  });
+
+  it('обрыв в процессе даёт source.aborted, а не source.timeout', async () => {
+    const external = new AbortController();
+    const promise = loadSpecFromSource('http://api.test/spec', {
+      ...noCookies,
+      // таймаут заведомо больше: сработать обязан именно внешний сигнал
+      timeoutMs: 10_000,
+      signal: external.signal,
+      fetchImpl: fetchHanging(),
+    });
+    external.abort();
+
+    const outcome = await promise;
+    expect(outcome.kind).toBe('error');
+    if (outcome.kind !== 'error') return;
+    expect(outcome.code).toBe('source.aborted');
+    expect(outcome.status).toBe(499);
+  });
+
+  it('таймаут при живом внешнем сигнале остаётся таймаутом', async () => {
+    const external = new AbortController();
+    const outcome = await loadSpecFromSource('http://api.test/spec', {
+      ...noCookies,
+      timeoutMs: 20,
+      signal: external.signal,
+      fetchImpl: fetchHanging(),
+    });
+    expect(outcome.kind).toBe('error');
+    if (outcome.kind !== 'error') return;
+    expect(outcome.code).toBe('source.timeout');
+  });
+
+  it('успешная загрузка снимает слушатель с внешнего сигнала', async () => {
+    const external = new AbortController();
+    let removed = false;
+    const original = external.signal.removeEventListener.bind(external.signal);
+    external.signal.removeEventListener = ((...args: Parameters<typeof original>) => {
+      removed = true;
+      return original(...args);
+    }) as typeof original;
+
+    await loadSpecFromSource('http://api.test/spec', {
+      ...noCookies,
+      signal: external.signal,
+      fetchImpl: fetchReturning(response('{"openapi":"3.0.0"}')),
+    });
+    // иначе слушатель копился бы на чужом сигнале с каждой загрузкой
+    expect(removed).toBe(true);
+  });
+
+  it('чтение с диска тоже уважает отмену', async () => {
+    const outcome = await loadSpecFromSource(FIXTURE, {
+      ...noCookies,
+      signal: AbortSignal.abort(),
+    });
+    expect(outcome.kind).toBe('error');
+    if (outcome.kind !== 'error') return;
+    expect(outcome.code).toBe('source.aborted');
   });
 });
 

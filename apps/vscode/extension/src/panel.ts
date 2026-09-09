@@ -44,6 +44,12 @@ export class SpecPanel {
 
   private readonly disposables: vscode.Disposable[] = [];
   private readonly specs: SpecService;
+  /**
+   * Активные загрузки: id запроса → способ его оборвать. Нужны, чтобы смена
+   * источника прекращала предыдущую загрузку, а не оставляла её тянуть спеку
+   * в пустоту. Запись живёт ровно столько, сколько сам запрос.
+   */
+  private readonly loading = new Map<string, AbortController>();
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -98,8 +104,22 @@ export class SpecPanel {
 
   private async dispatch(msg: WebviewRequest): Promise<unknown> {
     switch (msg.type) {
-      case 'loadSpec':
-        return this.specs.load(msg.source);
+      case 'loadSpec': {
+        const controller = new AbortController();
+        this.loading.set(msg.id, controller);
+        try {
+          return await this.specs.load(msg.source, controller.signal);
+        } finally {
+          this.loading.delete(msg.id);
+        }
+      }
+
+      case 'cancel': {
+        // Записи может уже не быть: запрос успел завершиться сам. Это штатная
+        // гонка, а не ошибка.
+        this.loading.get(msg.cancelId)?.abort();
+        return { ok: true };
+      }
 
       case 'saveAuthCookie':
         await this.specs.saveCookie(msg.origin, msg.cookie);

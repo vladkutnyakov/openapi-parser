@@ -75,9 +75,20 @@ async function handleSpecRequest(req: IncomingMessage, res: ServerResponse) {
 
     // путь к файлу резолвим здесь: загрузчик ждёт готовый абсолютный путь
     const target = /^https?:\/\//i.test(source) ? source : resolve(source);
+
+    // Браузер отменил запрос (пользователь сменил источник) — прекращаем тянуть
+    // спеку с бэкенда: иначе она качается в пустоту до самого конца.
+    const aborted = new AbortController();
+    req.on('close', () => {
+      if (!res.writableEnded) aborted.abort();
+    });
+
     const outcome = await loadSpecFromSource(target, {
       getCookie: (origin) => authCookies.get(origin),
+      signal: aborted.signal,
     });
+    // писать в оборванное соединение некому и незачем
+    if (aborted.signal.aborted) return;
     sendOutcome(res, outcome);
   } catch (e) {
     send(res, 500, technicalError(e));

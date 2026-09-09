@@ -32,6 +32,12 @@ export interface SpecLoaderDeps {
   getCookie(origin: string): string | undefined | PromiseLike<string | undefined>;
   /** Лимит сетевой загрузки; к чтению с диска не относится. */
   timeoutMs?: number;
+  /**
+   * Отмена снаружи: пользователь сменил источник, не дождавшись ответа. Гасит
+   * загрузку наравне с таймаутом, но даёт свой код — иначе отменённый запрос
+   * отрапортовал бы таймаутом, которого не было.
+   */
+  signal?: AbortSignal;
   /** Подменяемо в тестах */
   readFile?(path: string): Promise<string>;
   /** Подменяемо в тестах */
@@ -71,10 +77,13 @@ export async function loadSpecFromSource(
   const doFetch = deps.fetchImpl ?? fetch;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
 
+  // отменили ещё до старта — не трогаем ни сеть, ни диск
+  if (deps.signal?.aborted) return abortedOutcome();
+
   let text: string;
   try {
     if (/^https?:\/\//i.test(target)) {
-      const remote = await fetchSpecText(target, doFetch, deps.getCookie, timeoutMs);
+      const remote = await fetchSpecText(target, doFetch, deps.getCookie, timeoutMs, deps.signal);
       if (remote.kind !== 'ok') return remote;
       text = remote.text;
     } else {
@@ -94,24 +103,45 @@ export async function loadSpecFromSource(
 
 type FetchTextResult = { kind: 'ok'; text: string } | Exclude<LoadOutcome, { kind: 'ok' }>;
 
+/** Оборвано снаружи — не ошибка источника, поэтому свой код и статус. */
+function abortedOutcome(): Exclude<LoadOutcome, { kind: 'ok' }> {
+  return { kind: 'error', status: 499, code: 'source.aborted' };
+}
+
 async function fetchSpecText(
   source: string,
   doFetch: typeof fetch,
   getCookie: SpecLoaderDeps['getCookie'],
   timeoutMs: number,
+  external?: AbortSignal,
 ): Promise<FetchTextResult> {
   const origin = originOf(source);
-  const headers: Record<string, string> = { accept: 'application/json' };
-  const cookie = await getCookie(origin);
-  if (cookie) headers.cookie = cookie;
 
   // Таймер снимается только после чтения тела: медленный бэкенд отдаёт заголовки
   // быстро, а тело долго — лимит на одни заголовки оставил бы дыру ровно там.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Внешнюю отмену переносим на свой контроллер вручную, а не через AbortSignal.any:
+  // тот появился недавно, и запаса по совместимости у него нет. Слушатель снимается
+  // в finally — иначе он висел бы на чужом сигнале после каждой загрузки.
+  //
+  // Подписка идёт ДО первого await: getCookie асинхронный (в расширении это
+  // SecretStorage), и отмена, пришедшая на этом шаге, иначе осталась бы неуслышанной —
+  // fetch стартовал бы с сигналом, который уже некому оборвать.
+  const relay = () => controller.abort();
+  external?.addEventListener('abort', relay, { once: true });
+
   try {
+    const headers: Record<string, string> = { accept: 'application/json' };
+    const cookie = await getCookie(origin);
+    if (cookie) headers.cookie = cookie;
+
     return await fetchWithin(source, doFetch, headers, controller.signal);
   } catch (e) {
+    // Причины обрыва различаем: внешняя отмена — это смена источника пользователем,
+    // и рапортовать о ней таймаутом, которого не было, нельзя.
+    if (external?.aborted) return abortedOutcome();
     // отмену отличаем от прочих сетевых сбоев: у неё есть внятная причина,
     // и общий technical показал бы пользователю невнятное «This operation was aborted»
     if (controller.signal.aborted) {
@@ -125,6 +155,7 @@ async function fetchSpecText(
     throw e;
   } finally {
     clearTimeout(timer);
+    external?.removeEventListener('abort', relay);
   }
 }
 
@@ -150,6 +181,10 @@ async function fetchWithin(
   headers: Record<string, string>,
   signal: AbortSignal,
 ): Promise<FetchTextResult> {
+  // Оборвали, пока ждали куку: в сеть не идём вовсе. Настоящий fetch отказал бы
+  // и сам, но полагаться на это нельзя — реализация подменяема.
+  if (signal.aborted) throw signal.reason;
+
   // redirect: 'manual' — иначе fetch молча пройдёт по 302 на форму логина Keycloak
   // и вернёт HTML со статусом 200, что выглядело бы как «невалидный JSON»
   const r = await doFetch(source, { headers, redirect: 'manual', signal });

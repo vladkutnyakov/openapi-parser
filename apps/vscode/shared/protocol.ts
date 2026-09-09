@@ -51,8 +51,20 @@ export interface StorageSetRequest {
   value: string;
 }
 
+/**
+ * Отмена ранее отправленного запроса. Отдельным сообщением, потому что AbortSignal
+ * через postMessage не переносится: сериализуется только структура.
+ * Ответа не требует — webview свой промис уже отбросил.
+ */
+export interface CancelRequest {
+  id: string;
+  type: 'cancel';
+  cancelId: string;
+}
+
 export type WebviewRequest =
   | LoadSpecRequest
+  | CancelRequest
   | SaveAuthCookieRequest
   | CopyRequest
   | OpenExternalRequest

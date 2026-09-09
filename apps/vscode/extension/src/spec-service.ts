@@ -12,12 +12,13 @@ const SECRET_PREFIX = 'openapi-parser:cookie:';
 export class SpecService {
   constructor(private readonly secrets: vscode.SecretStorage) {}
 
-  async load(source: string): Promise<LoadSpecPayload> {
+  async load(source: string, signal?: AbortSignal): Promise<LoadSpecPayload> {
     // лимит передаётся явно: его связь с ожиданием в webview иначе была бы
     // не видна в коде, а нарушить её — значит вернуть ошибку про расширение
     const outcome = await loadSpecFromSource(this.toAbsolute(source), {
       getCookie: (origin) => this.secrets.get(SECRET_PREFIX + origin),
       timeoutMs: LOAD_SPEC_TIMEOUT_MS,
+      signal,
     });
 
     // по проводу едет код ошибки, а не текст: extension host словаря не видит

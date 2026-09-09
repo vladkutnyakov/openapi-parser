@@ -125,6 +125,7 @@ export const en: Messages = {
   'error.source.notJson': 'The content at this source is not valid JSON',
   'error.source.serverStatus': (p) => `The spec server responded ${p.status} ${p.statusText}`,
   'error.source.timeout': (p) => `The source didn't respond within ${p.seconds}s — request cancelled`,
+  'error.source.aborted': 'Loading cancelled',
   'error.source.needsAuth': 'The source requires authentication',
   'error.source.needsAuthHtml': 'The source returned HTML instead of JSON — it likely needs authentication',
   'error.source.notJsonResponse':
