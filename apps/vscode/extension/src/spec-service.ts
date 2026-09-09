@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { isAbsolute, resolve } from 'node:path';
 import { loadSpecFromSource, originOf } from '@openapi-parser/core/node';
-import type { LoadSpecPayload } from '../../shared/protocol';
+import { LOAD_SPEC_TIMEOUT_MS, type LoadSpecPayload } from '../../shared/protocol';
 
 const SECRET_PREFIX = 'openapi-parser:cookie:';
 
@@ -13,8 +13,11 @@ export class SpecService {
   constructor(private readonly secrets: vscode.SecretStorage) {}
 
   async load(source: string): Promise<LoadSpecPayload> {
+    // лимит передаётся явно: его связь с ожиданием в webview иначе была бы
+    // не видна в коде, а нарушить её — значит вернуть ошибку про расширение
     const outcome = await loadSpecFromSource(this.toAbsolute(source), {
       getCookie: (origin) => this.secrets.get(SECRET_PREFIX + origin),
+      timeoutMs: LOAD_SPEC_TIMEOUT_MS,
     });
 
     // по проводу едет код ошибки, а не текст: extension host словаря не видит

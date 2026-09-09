@@ -141,6 +141,85 @@ describe('loadSpecFromSource: распознавание авторизации'
   });
 });
 
+describe('loadSpecFromSource: таймаут сетевой загрузки', () => {
+  /** Молчащий бэкенд: отвечает только на отмену, как настоящий fetch */
+  function fetchHanging(spy?: (init: RequestInit) => void) {
+    return ((_url: string, init: RequestInit) => {
+      spy?.(init);
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () =>
+          reject(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })),
+        );
+      });
+    }) as unknown as typeof fetch;
+  }
+
+  it('молчащий источник даёт source.timeout, а не общий technical', async () => {
+    const outcome = await loadSpecFromSource('http://api.test/spec', {
+      ...noCookies,
+      timeoutMs: 20,
+      fetchImpl: fetchHanging(),
+    });
+    expect(outcome.kind).toBe('error');
+    if (outcome.kind !== 'error') return;
+    expect(outcome.code).toBe('source.timeout');
+    expect(outcome.status).toBe(504);
+    // секунды едут параметром: рамку предложения вокруг них соберёт ui
+    expect(outcome.params?.seconds).toBe(0);
+  });
+
+  it('запрос действительно отменяется, а не просто перестаёт ожидаться', async () => {
+    let sent: RequestInit | undefined;
+    await loadSpecFromSource('http://api.test/spec', {
+      ...noCookies,
+      timeoutMs: 20,
+      fetchImpl: fetchHanging((init) => (sent = init)),
+    });
+    expect(sent?.signal?.aborted).toBe(true);
+  });
+
+  it('ответ в пределах лимита таймаутом не считается', async () => {
+    const outcome = await loadSpecFromSource('http://api.test/spec', {
+      ...noCookies,
+      timeoutMs: 10_000,
+      fetchImpl: fetchReturning(response('{"openapi":"3.0.0"}')),
+    });
+    expect(outcome.kind).toBe('ok');
+  });
+
+  it('медленное тело тоже под лимитом: заголовки быстрые, text() молчит', async () => {
+    const slowBody = {
+      ...response(''),
+      text: () => new Promise<string>(() => {}),
+    } as Response;
+
+    const outcome = await loadSpecFromSource('http://api.test/spec', {
+      ...noCookies,
+      timeoutMs: 20,
+      fetchImpl: fetchReturning(slowBody),
+    });
+    expect(outcome.kind).toBe('error');
+    if (outcome.kind !== 'error') return;
+    expect(outcome.code).toBe('source.timeout');
+  });
+
+  it('сетевой сбой остаётся техническим, а не выдаётся за таймаут', async () => {
+    const outcome = await loadSpecFromSource('http://api.test/spec', {
+      ...noCookies,
+      timeoutMs: 10_000,
+      fetchImpl: (() => Promise.reject(new Error('ECONNREFUSED'))) as unknown as typeof fetch,
+    });
+    expect(outcome.kind).toBe('error');
+    if (outcome.kind !== 'error') return;
+    expect(outcome.code).toBe('technical');
+  });
+
+  it('чтение с диска лимита не касается', async () => {
+    const outcome = await loadSpecFromSource(FIXTURE, { ...noCookies, timeoutMs: 1 });
+    expect(outcome.kind).toBe('ok');
+  });
+});
+
 describe('loadSpecFromSource: куки', () => {
   it('кука для своего origin уходит в заголовок', async () => {
     let sent: RequestInit | undefined;

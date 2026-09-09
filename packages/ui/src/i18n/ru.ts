@@ -141,6 +141,8 @@ export const ru = {
   'error.source.notJson': 'Содержимое по этому источнику — не валидный JSON',
   'error.source.serverStatus': (p: { status: number; statusText: string }) =>
     `Сервер спеки ответил ${p.status} ${p.statusText}`,
+  'error.source.timeout': (p: { seconds: number }) =>
+    `Источник не ответил за ${p.seconds} с — запрос отменён`,
   'error.source.needsAuth': 'Источник требует авторизации',
   'error.source.needsAuthHtml': 'Источник вернул HTML вместо JSON — похоже, требуется авторизация',
   'error.source.notJsonResponse':

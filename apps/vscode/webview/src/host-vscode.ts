@@ -2,6 +2,7 @@ import { SpecError, technicalError } from '@openapi-parser/core';
 import type { HostBridge, PickedFile, SpecLoadResult } from '@openapi-parser/ui';
 import {
   ENV_GLOBAL,
+  LOAD_SPEC_TIMEOUT_MS,
   STATE_GLOBAL,
   type EnvSnapshot,
   type HostResponse,
@@ -19,6 +20,14 @@ declare function acquireVsCodeApi(): VsCodeApi;
 
 /** Ответ не пришёл — считаем запрос провалившимся, иначе UI навсегда останется в «Загрузка…» */
 const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * У загрузки спеки ожидание своё и намеренно **больше** лимита самой загрузки
+ * в Node: сработать должен таймаут загрузчика — он отменяет запрос и возвращает код
+ * про источник. Это ожидание остаётся страховкой на случай молча упавшего
+ * обработчика, и только тогда пользователь увидит «Расширение не ответило вовремя».
+ */
+const LOAD_SPEC_WAIT_MS = LOAD_SPEC_TIMEOUT_MS + 5_000;
 
 /**
  * acquireVsCodeApi можно вызвать ровно один раз за жизнь webview —
@@ -113,7 +122,10 @@ export function createVscodeHost(): HostBridge {
 
     async loadSpec(source: string): Promise<SpecLoadResult> {
       try {
-        return (await request({ type: 'loadSpec', source })) as LoadSpecPayload as SpecLoadResult;
+        return (await request(
+          { type: 'loadSpec', source },
+          LOAD_SPEC_WAIT_MS,
+        )) as LoadSpecPayload as SpecLoadResult;
       } catch (e) {
         return toFailure(e);
       }
