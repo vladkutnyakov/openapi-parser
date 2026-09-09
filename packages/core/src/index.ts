@@ -15,3 +15,4 @@ export * from './type-diff';
 export * from './url-state';
 export * from './recent-sources';
 export * from './find-matches';
+export * from './virtual-window';
