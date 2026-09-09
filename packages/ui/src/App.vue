@@ -120,7 +120,7 @@ function startResize(e: PointerEvent) {
       @submit-cookie="saveCookieAndRetry"
       @open-rules="hooksEditorOpen = true"
     />
-    <div class="content" :style="{ gridTemplateColumns: `${sidebarWidth}px 5px 1fr` }">
+    <div class="content" :style="{ gridTemplateColumns: `${sidebarWidth}px 1fr` }">
       <EndpointList
         v-model:search="search"
         v-model:method="method"
@@ -128,7 +128,12 @@ function startResize(e: PointerEvent) {
         :selected-id="selectedId"
         @select="(e) => (selectedId = e.id)"
       />
-      <div class="resizer" :title="t('output.resize')" @pointerdown.prevent="startResize" />
+      <div
+        class="resizer"
+        :style="{ left: `${sidebarWidth}px` }"
+        :title="t('output.resize')"
+        @pointerdown.prevent="startResize"
+      />
       <TypeOutput :blocks="blocks" />
     </div>
     <HooksEditor v-if="hooksEditorOpen" :spec="spec" :entry="selected" @close="hooksEditorOpen = false" />
@@ -259,10 +264,23 @@ body {
 }
 .content {
   display: grid;
+  position: relative;
   flex: 1;
   min-height: 0;
 }
+/*
+ * Ручка — накладка поверх границы сайдбара, а не своя колонка грида: колонка
+ * раздвигала бы панели на свою ширину, и плашка вывода не примыкала бы к списку.
+ * Отсюда же отрицательный сдвиг — полоса захвата шире линии и центрируется на ней.
+ */
 .resizer {
+  position: absolute;
+  /* выше липкой плашки вывода (.toolbar), иначе при прокрутке она накрыла бы ручку */
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  margin-left: -2px;
   cursor: col-resize;
   background: transparent;
   transition: background 0.15s;
