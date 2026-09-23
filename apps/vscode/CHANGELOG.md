@@ -5,6 +5,34 @@ All notable changes to this extension are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-23
+
+### Added
+
+- Search can be limited to one type: press Ctrl+F after clicking inside a block,
+  and only that block is searched. A chip in the search bar names it; clicking
+  the chip's × or outside any block searches the whole output again. The scope
+  follows the type by name, so the same DTO stays in scope on the next endpoint.
+
+### Changed
+
+- The endpoint's method, path and summary are pinned at the top of the output
+  and stay visible while you scroll, so you always know whose types you are
+  looking at. The summary sits on its own line under the method and path. The
+  method badge uses the same colors as in the endpoint list.
+- Section headers stick under that header while you scroll a long section, so
+  the category and its collapse and copy buttons stay within reach. Collapsing a
+  stuck section brings its header back into place instead of leaving you
+  somewhere in the middle of the next one.
+- "Copy all" is now an icon button next to the endpoint header.
+
+### Fixed
+
+- Typing in the search bar no longer jumps to the first match of the whole
+  output on every keystroke. The current match stays put while you edit the
+  query, and a fresh search starts from what is on screen — searching for a
+  field in a DTO near the bottom used to throw the view back to the top.
+
 ## [1.4.0] - 2026-09-09
 
 ### Added
