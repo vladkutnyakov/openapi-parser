@@ -123,6 +123,24 @@ function toggleSection(kind: TypeKind) {
   hostStorage.set(COLLAPSED_KEY, JSON.stringify([...next]));
 }
 
+/**
+ * Клик по заголовку секции. Если заголовок в этот момент прилип к шапке (секция
+ * прокручена), после сворачивания её тело исчезает, scrollTop остаётся прежним —
+ * и под курсором оказывается случайное место из следующих секций. Поэтому
+ * возвращаем свёрнутую секцию туда, где только что стоял её заголовок.
+ */
+async function onSectionToggle(kind: TypeKind, e: MouseEvent) {
+  const area = scrollArea.value;
+  const section = (e.currentTarget as HTMLElement).closest<HTMLElement>('.section');
+  const collapsing = !collapsed.value.has(kind);
+  const stickyTop = area ? area.getBoundingClientRect().top + toolbarHeight.value : 0;
+  const stuck = !!area && !!section && section.getBoundingClientRect().top < stickyTop;
+  toggleSection(kind);
+  if (!collapsing || !stuck) return;
+  await nextTick();
+  area!.scrollTop += section!.getBoundingClientRect().top - stickyTop;
+}
+
 // открытая панель сравнения: имя типа + его чистый код
 const compare = ref<{ name: string; code: string } | null>(null);
 
@@ -162,6 +180,23 @@ const { open: hooksEditorOpen } = useHooksEditor();
 
 const scrollArea = ref<HTMLElement | null>(null);
 const blocksRoot = ref<HTMLElement | null>(null);
+const toolbar = ref<HTMLElement | null>(null);
+
+/*
+ * Высота липкой шапки — отступ для липких заголовков секций (--toolbar-h).
+ * Меряется, а не считается из токенов: в панели VSCode шрифт приезжает из темы
+ * редактора, а длинный summary может менять высоту строки. Шапка живёт внутри
+ * v-else, поэтому наблюдатель переподключается по появлению элемента.
+ */
+const toolbarHeight = ref(0);
+let toolbarObserver: ResizeObserver | undefined;
+watch(toolbar, (el) => {
+  toolbarObserver?.disconnect();
+  toolbarObserver = undefined;
+  if (!el) return;
+  toolbarObserver = new ResizeObserver(() => (toolbarHeight.value = el.offsetHeight));
+  toolbarObserver.observe(el);
+});
 const findBar = ref<InstanceType<typeof FindBar> | null>(null);
 
 const hasBlocks = computed(() => props.blocks.length > 0);
@@ -350,8 +385,12 @@ function scrollRangeIntoView(range: Range) {
   // .toolbar внутри области sticky и лежит поверх кода: совпадение, доведённое
   // ровно до верха, спряталось бы под ним
   const toolbarH = area.querySelector('.toolbar')?.getBoundingClientRect().height ?? 0;
+  // под шапкой прилипает ещё и заголовок секции, в которой лежит совпадение
+  const start = range.startContainer;
+  const startEl = start instanceof Element ? start : start.parentElement;
+  const headH = startEl?.closest('.section')?.querySelector('.section-head')?.getBoundingClientRect().height ?? 0;
 
-  const above = rect.top - (box.top + toolbarH);
+  const above = rect.top - (box.top + toolbarH + headH);
   const below = rect.bottom - box.bottom;
   if (above < 0) area.scrollTop += above - SCROLL_MARGIN;
   else if (below > 0) area.scrollTop += below + SCROLL_MARGIN;
@@ -436,6 +475,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  toolbarObserver?.disconnect();
   document.removeEventListener('keydown', onDocKeydown);
   document.removeEventListener('pointerdown', onDocPointerdown);
   // реестр подсветок глобальный на документ — иначе она пережила бы компонент
@@ -463,8 +503,8 @@ onBeforeUnmount(() => {
         @close="closeFind"
         @clear-scope="clearScope"
       />
-      <div ref="scrollArea" class="scroll-area">
-        <div class="toolbar">
+      <div ref="scrollArea" class="scroll-area" :style="{ '--toolbar-h': `${toolbarHeight}px` }">
+        <div ref="toolbar" class="toolbar">
           <!--
             Заголовок эндпоинта живёт в липкой шапке: при прокрутке длинного вывода
             должно оставаться видно, чьи это типы. Это не код, а факты о ручке —
@@ -530,7 +570,7 @@ onBeforeUnmount(() => {
                 type="button"
                 :title="t('output.toggleSection')"
                 :aria-expanded="!collapsed.has(s.kind)"
-                @click="toggleSection(s.kind)"
+                @click="onSectionToggle(s.kind, $event)"
               >
                 <span class="section-caret">{{ collapsed.has(s.kind) ? '▸' : '▾' }}</span>
                 <span class="section-title">{{ t(SECTION_KEY[s.kind]) }}</span>
@@ -855,11 +895,22 @@ onBeforeUnmount(() => {
 .section {
   margin-top: 14px;
 }
+/*
+ * Заголовок секции липнет под шапкой эндпоинта: в длинной секции DTO иначе не
+ * видно, к какой категории относится код на экране, а свернуть или скопировать
+ * её можно было бы, только долистав до начала. Липнет в пределах своей секции —
+ * следующая выталкивает предыдущую сама. Фон обязателен: код под ним не должен
+ * просвечивать. z-index ниже, чем у .toolbar, чтобы шапка оставалась сверху.
+ */
 .section-head {
+  position: sticky;
+  top: var(--toolbar-h, 0px);
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 4px 0;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 /* тянется на всю ширину, чтобы клик по пустому месту строки тоже сворачивал секцию */
