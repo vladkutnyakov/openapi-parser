@@ -508,30 +508,36 @@ onBeforeUnmount(() => {
           <!--
             Заголовок эндпоинта живёт в липкой шапке: при прокрутке длинного вывода
             должно оставаться видно, чьи это типы. Это не код, а факты о ручке —
-            рисуются интерфейсом, а не комментарием внутри <pre>. Всё в одну строку
-            с многоточием: шапка обязана совпадать по высоте с шапкой сайдбара.
-            summary приходит из спеки и не переводится.
+            рисуются интерфейсом, а не комментарием внутри <pre>. Метод и путь —
+            первой строкой, summary — второй, обе с многоточием. summary приходит
+            из спеки и не переводится.
           -->
           <header v-if="header" class="endpoint">
-            <span class="endpoint-method method-badge" :data-method="header.method">{{ header.method }}</span>
             <!--
-              Путь — кнопка, а не span с @click: по нему кликают, значит он должен
-              доставаться с клавиатуры и называть себя скринридеру. Копируется голый
-              путь без метода: его вставляют в код клиента, а не в лог.
+              Метод с путём — своей строкой-обёрткой, а не соседями summary во flex-wrap:
+              при переносе длинный путь уезжал бы под метод целиком вместо многоточия.
             -->
-            <button
-              class="endpoint-path"
-              type="button"
-              :title="t('output.copyPathTitle')"
-              @click="copy(header.path!, '__path')"
-            >
-              {{ header.path }}
-            </button>
-            <!--
-              Соседом кнопки, а не внутри: путь обрезается многоточием, и подпись
-              внутри него уезжала бы под обрезку. v-if — место под неё не резервируется.
-            -->
-            <span v-if="copiedKey === '__path'" class="endpoint-copied">{{ t('output.copied') }}</span>
+            <div class="endpoint-line">
+              <span class="endpoint-method method-badge" :data-method="header.method">{{ header.method }}</span>
+              <!--
+                Путь — кнопка, а не span с @click: по нему кликают, значит он должен
+                доставаться с клавиатуры и называть себя скринридеру. Копируется голый
+                путь без метода: его вставляют в код клиента, а не в лог.
+              -->
+              <button
+                class="endpoint-path"
+                type="button"
+                :title="t('output.copyPathTitle')"
+                @click="copy(header.path!, '__path')"
+              >
+                {{ header.path }}
+              </button>
+              <!--
+                Соседом кнопки, а не внутри: путь обрезается многоточием, и подпись
+                внутри него уезжала бы под обрезку. v-if — место под неё не резервируется.
+              -->
+              <span v-if="copiedKey === '__path'" class="endpoint-copied">{{ t('output.copied') }}</span>
+            </div>
             <span v-if="header.summary" class="endpoint-summary" :title="header.summary">{{ header.summary }}</span>
           </header>
           <button
@@ -787,16 +793,22 @@ onBeforeUnmount(() => {
 /*
  * Заголовок эндпоинта в липкой шапке. Метод — бейджем того же цвета, что в сайдбаре
  * (.method-badge в App.vue), путь моноширинный (в нём значимы {фигурные скобки}
- * и слеши), summary — обычным текстом. Строго одна строка: при нехватке места
- * первым сжимается summary, затем путь — оба с многоточием.
+ * и слеши) — первой строкой; summary — второй, обычным текстом. Строки не
+ * переносятся: длинный путь и summary обрезаются многоточием.
  */
 .endpoint {
   display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin-right: auto;
+}
+.endpoint-line {
+  display: flex;
   align-items: baseline;
   gap: 8px;
   min-width: 0;
-  margin-right: auto;
 }
 .endpoint-method {
   flex: none;
@@ -838,10 +850,8 @@ onBeforeUnmount(() => {
   font-weight: 400;
   white-space: nowrap;
 }
-/* summary из спеки: сжимается раньше пути (flex-shrink больше), полный текст — в title */
+/* summary из спеки — отдельной строкой под адресом, полный текст — в title */
 .endpoint-summary {
-  flex: 0 1000 auto;
-  min-width: 0;
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
