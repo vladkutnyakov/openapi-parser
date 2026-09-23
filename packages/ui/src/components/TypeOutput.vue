@@ -465,18 +465,15 @@ onBeforeUnmount(() => {
       />
       <div ref="scrollArea" class="scroll-area">
         <div class="toolbar">
-          <button class="copy-btn copy-btn--all" :title="t('output.copyAllTitle')" @click="copy(allCode, '__all')">
-            {{ copiedKey === '__all' ? t('output.copied') : t('output.copyAll') }}
-          </button>
-        </div>
-        <div ref="blocksRoot" class="blocks">
           <!--
-            Заголовок эндпоинта: не в секции, поэтому стоит над ними. Это не код,
-            а факты о ручке — рисуются интерфейсом, а не комментарием внутри <pre>,
-            где терялись бы среди типов. summary приходит из спеки и не переводится.
+            Заголовок эндпоинта живёт в липкой шапке: при прокрутке длинного вывода
+            должно оставаться видно, чьи это типы. Это не код, а факты о ручке —
+            рисуются интерфейсом, а не комментарием внутри <pre>. Всё в одну строку
+            с многоточием: шапка обязана совпадать по высоте с шапкой сайдбара.
+            summary приходит из спеки и не переводится.
           -->
           <header v-if="header" class="endpoint">
-            <span class="endpoint-method">{{ header.method }}</span>
+            <span class="endpoint-method method-badge" :data-method="header.method">{{ header.method }}</span>
             <!--
               Путь — кнопка, а не span с @click: по нему кликают, значит он должен
               доставаться с клавиатуры и называть себя скринридеру. Копируется голый
@@ -489,15 +486,31 @@ onBeforeUnmount(() => {
               @click="copy(header.path!, '__path')"
             >
               {{ header.path }}
-              <!--
-                v-if, а не постоянно висящий прозрачный span: зарезервированное место
-                на узкой панели переносило подпись на отдельную строку, и заголовок
-                выглядел разорванным ещё до того, как что-то скопировали.
-              -->
-              <span v-if="copiedKey === '__path'" class="endpoint-copied">{{ t('output.copied') }}</span>
             </button>
-            <span v-if="header.summary" class="endpoint-summary">{{ header.summary }}</span>
+            <!--
+              Соседом кнопки, а не внутри: путь обрезается многоточием, и подпись
+              внутри него уезжала бы под обрезку. v-if — место под неё не резервируется.
+            -->
+            <span v-if="copiedKey === '__path'" class="endpoint-copied">{{ t('output.copied') }}</span>
+            <span v-if="header.summary" class="endpoint-summary" :title="header.summary">{{ header.summary }}</span>
           </header>
+          <button
+            class="copy-btn copy-btn--icon copy-btn--all"
+            type="button"
+            :title="t('output.copyAllTitle')"
+            :aria-label="t('output.copyAll')"
+            @click="copy(allCode, '__all')"
+          >
+            <svg v-if="copiedKey === '__all'" class="icon icon--ok" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M3.5 8.5l3 3 6-6" />
+            </svg>
+            <svg v-else class="icon" viewBox="0 0 16 16" aria-hidden="true">
+              <rect x="5.5" y="5.5" width="8" height="9" rx="1.5" />
+              <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
+            </svg>
+          </button>
+        </div>
+        <div ref="blocksRoot" class="blocks">
 
           <section
             v-for="s in sections"
@@ -665,7 +678,9 @@ onBeforeUnmount(() => {
   top: 0;
   z-index: 2;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 12px;
   padding: 10px 16px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
@@ -684,11 +699,11 @@ onBeforeUnmount(() => {
   border-color: var(--accent);
 }
 /* высота от общего токена: шапка вывода обязана совпадать с шапкой сайдбара,
-   иначе горизонтальная граница под ними идёт с перепадом */
+   иначе горизонтальная граница под ними идёт с перепадом. Квадрат — под иконку */
 .copy-btn--all {
+  flex: none;
+  width: var(--control-height);
   height: var(--control-height);
-  padding: 0 14px;
-  font-weight: 600;
 }
 .copy-btn--active {
   border-color: var(--accent);
@@ -730,24 +745,24 @@ onBeforeUnmount(() => {
   padding: 8px 16px 24px;
 }
 /*
- * Заголовок эндпоинта. Раньше был комментарием внутри <pre> и сливался с кодом;
- * теперь это строка интерфейса: метод выделен, путь моноширинный (в нём значимы
- * {фигурные скобки} и слеши), summary — обычным текстом отдельной строкой.
+ * Заголовок эндпоинта в липкой шапке. Метод — бейджем того же цвета, что в сайдбаре
+ * (.method-badge в App.vue), путь моноширинный (в нём значимы {фигурные скобки}
+ * и слеши), summary — обычным текстом. Строго одна строка: при нехватке места
+ * первым сжимается summary, затем путь — оба с многоточием.
  */
 .endpoint {
   display: flex;
-  flex-wrap: wrap;
+  flex: 1;
   align-items: baseline;
-  gap: 4px 8px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  min-width: 0;
+  margin-right: auto;
 }
 .endpoint-method {
+  flex: none;
   padding: 1px 6px;
   border-radius: 4px;
-  background: var(--accent);
-  color: var(--bg);
-  font: 600 11px/1.5 -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font: 700 11px/1.5 ui-monospace, Consolas, monospace;
   letter-spacing: 0.04em;
 }
 /*
@@ -756,6 +771,8 @@ onBeforeUnmount(() => {
  * что элемент кликабельный: одного курсора мало, он виден лишь под мышью.
  */
 .endpoint-path {
+  flex: 0 1 auto;
+  min-width: 0;
   padding: 0;
   border: 0;
   border-bottom: 1px dashed var(--border);
@@ -763,7 +780,9 @@ onBeforeUnmount(() => {
   font: 600 13px/1.5 ui-monospace, Consolas, monospace;
   color: var(--text);
   text-align: left;
-  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 .endpoint-path:hover {
@@ -772,18 +791,22 @@ onBeforeUnmount(() => {
 }
 /* Подтверждение появляется рядом с путём и только после клика — место под него не резервируется */
 .endpoint-copied {
-  margin-left: 6px;
+  flex: none;
   color: var(--success);
   font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 11px;
   font-weight: 400;
   white-space: nowrap;
 }
-/* summary из спеки — на всю ширину, отдельной строкой под адресом */
+/* summary из спеки: сжимается раньше пути (flex-shrink больше), полный текст — в title */
 .endpoint-summary {
-  flex-basis: 100%;
+  flex: 0 1000 auto;
+  min-width: 0;
   color: var(--muted);
   font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /*
  * Метаданные блока (код ответа, его описание, Content-Type). Отбиты от кода

@@ -179,7 +179,7 @@ watch(
               :title="e.summary"
               @click="emit('select', e)"
             >
-              <span class="badge" :data-method="e.method">{{ e.method }}</span>
+              <span class="badge method-badge" :data-method="e.method">{{ e.method }}</span>
               <span class="path">{{ e.path }}</span>
             </button>
           </li>
@@ -323,23 +323,7 @@ watch(
   border-radius: 4px;
   font: 700 10px/1.4 ui-monospace, Consolas, monospace;
   text-align: center;
-  color: #fff;
-  background: #6b7280;
-}
-.badge[data-method='GET'] {
-  background: #2563eb;
-}
-.badge[data-method='POST'] {
-  background: #16a34a;
-}
-.badge[data-method='PUT'] {
-  background: #d97706;
-}
-.badge[data-method='PATCH'] {
-  background: #9333ea;
-}
-.badge[data-method='DELETE'] {
-  background: #dc2626;
+  /* цвета — в глобальном .method-badge (App.vue), общие с шапкой вывода */
 }
 .path {
   overflow: hidden;

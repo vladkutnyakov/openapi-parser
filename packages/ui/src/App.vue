@@ -262,6 +262,31 @@ body {
 ::highlight(openapi-find-active) {
   background-color: var(--find-match-active-bg);
 }
+
+/*
+ * Бейдж HTTP-метода — общий для сайдбара и шапки вывода, поэтому глобальный:
+ * цвет метода обязан совпадать в обоих местах. От темы он намеренно не зависит —
+ * цвет здесь несёт смысл метода, а не палитру, и белый текст читается на любом фоне.
+ */
+.method-badge {
+  color: #fff;
+  background: #6b7280;
+}
+.method-badge[data-method='GET'] {
+  background: #2563eb;
+}
+.method-badge[data-method='POST'] {
+  background: #16a34a;
+}
+.method-badge[data-method='PUT'] {
+  background: #d97706;
+}
+.method-badge[data-method='PATCH'] {
+  background: #9333ea;
+}
+.method-badge[data-method='DELETE'] {
+  background: #dc2626;
+}
 </style>
 
 <style scoped>
