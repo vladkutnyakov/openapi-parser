@@ -6,9 +6,11 @@ defineProps<{
   /** Индекс текущего совпадения; -1, когда совпадений нет. */
   activeIndex: number;
   total: number;
+  /** Имя блока, которым ограничен поиск; null — поиск по всему выводу. */
+  scope: string | null;
 }>();
 
-const emit = defineEmits<{ step: [delta: number]; close: [] }>();
+const emit = defineEmits<{ step: [delta: number]; close: []; clearScope: [] }>();
 
 const query = defineModel<string>({ required: true });
 
@@ -35,6 +37,20 @@ defineExpose({ focusInput });
     без него Shift+Enter вызвал бы оба обработчика сразу.
   -->
   <div class="find-bar">
+    <!--
+      Чип области — кнопка целиком: клик по нему и есть «снять ограничение», и так он
+      достаётся с клавиатуры. Имя блока — идентификатор из спеки, не переводится.
+    -->
+    <button
+      v-if="scope"
+      class="scope-chip"
+      type="button"
+      :title="t('output.findScopeClear')"
+      @click="emit('clearScope'), focusInput()"
+    >
+      <span class="scope-name">{{ t('output.findScope', { name: scope }) }}</span>
+      <span class="scope-x" aria-hidden="true">✕</span>
+    </button>
     <input
       ref="input"
       v-model="query"
@@ -74,6 +90,34 @@ defineExpose({ focusInput });
   padding: 8px 16px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
+}
+.scope-chip {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 45%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel);
+  /* цвет задан явно: иначе текст кнопки взял бы чёрный и пропал в тёмной теме */
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+.scope-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-x {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.scope-chip:hover .scope-x {
+  color: var(--text);
 }
 .find-input {
   flex: 1;

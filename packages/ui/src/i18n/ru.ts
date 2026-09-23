@@ -82,6 +82,8 @@ export const ru = {
   'output.findNext': 'Следующее совпадение (Enter)',
   'output.findClose': 'Закрыть поиск (Esc)',
   'output.findNoResults': 'Нет совпадений',
+  'output.findScopeClear': 'Искать во всём выводе',
+  'output.findScope': (p: { name: string }) => `в ${p.name}`,
   // Параметризован, хотя «3 / 17» выглядит нейтрально: захардкоженный формат в
   // шаблоне был бы пользовательской строкой в компоненте, а перевод может захотеть «3 из 17».
   'output.findCounter': (p: { current: number; total: number }) => `${p.current} / ${p.total}`,

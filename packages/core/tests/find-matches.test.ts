@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findMatches, stepMatchIndex } from '../src/find-matches';
+import { anchoredMatchIndex, findMatches, stepMatchIndex } from '../src/find-matches';
 
 describe('findMatches', () => {
   it('возвращает пустой список для пустого запроса или текста', () => {
@@ -81,5 +81,33 @@ describe('stepMatchIndex', () => {
   it('шаг больше числа совпадений всё равно даёт валидный индекс', () => {
     expect(stepMatchIndex(0, 3, 7)).toBe(1);
     expect(stepMatchIndex(0, 3, -7)).toBe(2);
+  });
+});
+
+describe('anchoredMatchIndex', () => {
+  // совпадения на позициях 10, 20, 30; якорь — позиция в том же документе
+  const positions = [10, 20, 30];
+  const before = (anchor: number) => (i: number) => positions[i] < anchor;
+
+  it('без совпадений отдаёт -1', () => {
+    expect(anchoredMatchIndex(0, () => true)).toBe(-1);
+  });
+
+  it('якорь до всех совпадений — первое', () => {
+    expect(anchoredMatchIndex(3, before(0))).toBe(0);
+  });
+
+  it('якорь посередине — первое после него', () => {
+    expect(anchoredMatchIndex(3, before(15))).toBe(1);
+    expect(anchoredMatchIndex(3, before(25))).toBe(2);
+  });
+
+  it('совпадение ровно на якоре остаётся текущим', () => {
+    // иначе допечатка буквы в запрос уводила бы со стоящего совпадения на следующее
+    expect(anchoredMatchIndex(3, before(20))).toBe(1);
+  });
+
+  it('якорь после всех — заворот на первое', () => {
+    expect(anchoredMatchIndex(3, before(99))).toBe(0);
   });
 });

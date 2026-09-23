@@ -69,6 +69,8 @@ export const en: Messages = {
   'output.findNext': 'Next match (Enter)',
   'output.findClose': 'Close find (Esc)',
   'output.findNoResults': 'No results',
+  'output.findScopeClear': 'Search all output',
+  'output.findScope': (p) => `in ${p.name}`,
   'output.findCounter': (p) => `${p.current} / ${p.total}`,
   'output.generationError': (p) => `// Generation error: ${p.message}`,
 

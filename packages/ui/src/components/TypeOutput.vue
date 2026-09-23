@@ -4,6 +4,7 @@ import hljs from 'highlight.js/lib/core';
 import typescript from 'highlight.js/lib/languages/typescript';
 // стили токенов подсветки — свои, на CSS-переменных (см. App.vue), чтобы работали обе темы
 import {
+  anchoredMatchIndex,
   findMatches,
   stripComments,
   type BlockMeta,
@@ -150,9 +151,11 @@ const {
   query,
   activeIndex,
   total,
+  scope,
   supported,
   openFind,
   closeFind,
+  clearScope,
   step,
 } = useFindInTypes();
 const { open: hooksEditorOpen } = useHooksEditor();
@@ -171,6 +174,12 @@ const SCROLL_MARGIN = 24;
 
 /** Найденные совпадения текущего запроса, в порядке появления в панели. */
 let ranges: Range[] = [];
+
+/**
+ * Имя блока, внутри которого был последний клик; null — клик был мимо блоков.
+ * Ctrl+F превращает его в область поиска: кликнул в DTO — ищешь в ней.
+ */
+let lastBlock: string | null = null;
 
 function clearHighlights() {
   ranges = [];
@@ -208,12 +217,36 @@ function nodeAt(nodes: { node: Text; start: number }[], offset: number): { node:
 }
 
 /**
+ * Совпадение выше видимой области — то есть пользователь его уже пролистал.
+ *
+ * У совпадения в свёрнутой секции рамка нулевая, и без подмены оно считалось бы
+ * «выше экрана» даже внизу вывода. Берём рамку самой секции: её заголовок виден.
+ */
+function isAboveViewport(range: Range, top: number): boolean {
+  let rect: DOMRect | undefined = range.getBoundingClientRect();
+  if (!rect.height && !rect.width) {
+    const start = range.startContainer;
+    const el = start instanceof Element ? start : start.parentElement;
+    rect = el?.closest('.section')?.getBoundingClientRect();
+  }
+  return !!rect && rect.bottom <= top;
+}
+
+/**
  * Пересобрать подсветку по текущему запросу.
  *
  * Индексируем каждый блок отдельно, а не всё разом: так совпадение, сшитое через
  * границу двух несвязанных типов, невозможно в принципе — а это и есть желаемое.
+ *
+ * Текущим становится первое совпадение не раньше якоря, а не первое во всём выводе:
+ * иначе поиск поля в нижней DTO уносил бы панель к верхним на каждую букву.
+ * Якорь — прежнее текущее совпадение, если оно ещё в документе (правка запроса: DOM
+ * тот же, и допечатка буквы не должна сдвигать с места). Иначе — верх видимой
+ * области: поиск только открыли, сменился эндпоинт (v-html пересоздал узлы, и
+ * прежний Range оторван) или область поиска.
  */
-function rebuildHighlights() {
+function rebuildHighlights(fromViewport = false) {
+  const prev = fromViewport ? undefined : ranges[activeIndex.value];
   ranges = [];
   const root = blocksRoot.value;
   if (!root || !query.value) {
@@ -221,7 +254,19 @@ function rebuildHighlights() {
     return;
   }
 
-  for (const block of root.querySelectorAll('pre.code')) {
+  let blocks = [...root.querySelectorAll<HTMLElement>('pre.code')];
+  if (scope.value) {
+    const inScope = blocks.filter((b) => b.closest<HTMLElement>('.block')?.dataset.name === scope.value);
+    // Блока с таким именем на этом эндпоинте нет — снимаем область, а не показываем
+    // «Нет совпадений», в котором пользователь застрял бы. Пересоберёт watch по scope.
+    if (!inScope.length) {
+      clearScope();
+      return;
+    }
+    blocks = inScope;
+  }
+
+  for (const block of blocks) {
     const { text, nodes } = indexBlock(block);
     if (!nodes.length) continue;
     for (const m of findMatches(text, query.value)) {
@@ -235,9 +280,16 @@ function rebuildHighlights() {
   }
 
   total.value = ranges.length;
-  // список совпадений мог укоротиться — индекс не должен остаться за концом
-  if (activeIndex.value >= ranges.length || activeIndex.value < 0) {
-    activeIndex.value = ranges.length ? 0 : -1;
+  if (prev?.startContainer.isConnected) {
+    activeIndex.value = anchoredMatchIndex(
+      ranges.length,
+      (i) => ranges[i].compareBoundaryPoints(Range.START_TO_START, prev) < 0,
+    );
+  } else {
+    const area = scrollArea.value;
+    const toolbarH = area?.querySelector('.toolbar')?.getBoundingClientRect().height ?? 0;
+    const top = (area?.getBoundingClientRect().top ?? 0) + toolbarH;
+    activeIndex.value = anchoredMatchIndex(ranges.length, (i) => isAboveViewport(ranges[i], top));
   }
   paintHighlights();
 }
@@ -313,13 +365,15 @@ function scrollRangeIntoView(range: Range) {
 
 // v-html пересоздаёт поддерево целиком, поэтому после смены эндпоинта собранные
 // Range указывают на оторванные узлы — пересобираем и по view, и по запросу.
-watch([view, query, findOpen], async () => {
+// Смена области — единственный случай, когда прежнее совпадение ещё в документе,
+// но якорем быть не должно: кликнули в другую DTO — искать надо от того, что видно в ней.
+watch([view, query, findOpen, scope], async (now, before) => {
   if (!findOpen.value || !query.value) {
     clearHighlights();
     return;
   }
   await nextTick();
-  rebuildHighlights();
+  rebuildHighlights(now[3] !== before[3]);
 });
 
 // шаг по совпадениям — только перекраска, искать заново незачем
@@ -343,8 +397,23 @@ function onDocKeydown(e: KeyboardEvent) {
   if (hooksEditorOpen.value) return; // модалка правил поверх всего — перехват был бы кражей
   if (isTextEntry(e.target)) return;
   e.preventDefault(); // иначе поверх виджета встанет строка поиска браузера
-  if (findOpen.value) findBar.value?.focusInput();
-  else openFind();
+  // область задаётся и при открытом виджете: повторный Ctrl+F после клика
+  // в другую DTO переключает поиск на неё
+  if (findOpen.value) {
+    scope.value = lastBlock;
+    findBar.value?.focusInput();
+  } else openFind(lastBlock);
+}
+
+/**
+ * Запоминаем блок последнего клика. Клики по строке поиска не в счёт: иначе
+ * повторный Ctrl+F из её поля сбросил бы только что заданную область.
+ */
+function onDocPointerdown(e: PointerEvent) {
+  const el = e.target as HTMLElement | null;
+  if (!el || typeof el.closest !== 'function' || el.closest('.find-bar')) return;
+  const block = blocksRoot.value?.contains(el) ? el.closest<HTMLElement>('.block') : null;
+  lastBlock = block?.dataset.name || null;
 }
 
 // Слушатель нужен как раз пока виджет закрыт, поэтому флаг здесь — «есть что искать»:
@@ -352,9 +421,13 @@ function onDocKeydown(e: KeyboardEvent) {
 watch(
   hasBlocks,
   (on) => {
-    if (on) document.addEventListener('keydown', onDocKeydown);
-    else {
+    if (on) {
+      document.addEventListener('keydown', onDocKeydown);
+      document.addEventListener('pointerdown', onDocPointerdown);
+    } else {
       document.removeEventListener('keydown', onDocKeydown);
+      document.removeEventListener('pointerdown', onDocPointerdown);
+      lastBlock = null;
       closeFind();
       clearHighlights();
     }
@@ -364,6 +437,7 @@ watch(
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onDocKeydown);
+  document.removeEventListener('pointerdown', onDocPointerdown);
   // реестр подсветок глобальный на документ — иначе она пережила бы компонент
   clearHighlights();
 });
@@ -384,8 +458,10 @@ onBeforeUnmount(() => {
         v-model="query"
         :active-index="activeIndex"
         :total="total"
+        :scope="scope"
         @step="step"
         @close="closeFind"
+        @clear-scope="clearScope"
       />
       <div ref="scrollArea" class="scroll-area">
         <div class="toolbar">
@@ -476,7 +552,13 @@ onBeforeUnmount(() => {
               свёрнутой секции — счётчик врал бы пользователю.
             -->
             <div v-show="!collapsed.has(s.kind)" class="section-body">
-              <div v-for="(b, i) in s.blocks" :key="i" class="block">
+              <div
+                v-for="(b, i) in s.blocks"
+                :key="i"
+                class="block"
+                :class="{ 'block--scoped': findOpen && b.name && scope === b.name }"
+                :data-name="b.name ?? undefined"
+              >
                 <!--
                   Строка метаданных над блоком: статус ответа с описанием и Content-Type.
                   Раньше это были комментарии внутри кода — там они красились как
@@ -821,6 +903,12 @@ onBeforeUnmount(() => {
 }
 .block {
   margin-bottom: 4px;
+}
+/* блок, которым ограничен поиск: видно, почему в соседних DTO подсветки нет */
+.block--scoped {
+  outline: 1px dashed var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 .block-head {
   display: flex;

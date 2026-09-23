@@ -57,3 +57,27 @@ export function stepMatchIndex(current: number, total: number, delta: number): n
   // дал бы -1 вместо последнего элемента.
   return (((current + delta) % total) + total) % total;
 }
+
+/**
+ * Индекс первого совпадения не раньше якоря — места, где пользователь сейчас
+ * находится. Если все совпадения раньше, заворачиваем на первое, как браузер.
+ *
+ * Без якоря каждая правка запроса начинала бы с первого совпадения всего вывода,
+ * и поиск поля в нижней DTO уносил бы панель к верхним.
+ *
+ * Сравнение с якорем приходит колбэком: совпадения упорядочены по документу, но
+ * что такое «раньше» (Range, координаты), знает только оболочка.
+ */
+export function anchoredMatchIndex(total: number, isBeforeAnchor: (i: number) => boolean): number {
+  if (total <= 0) return -1;
+  // Двоичный поиск первой позиции, которая не раньше якоря: предикат монотонен,
+  // потому что совпадения идут в порядке документа.
+  let lo = 0;
+  let hi = total;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (isBeforeAnchor(mid)) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo === total ? 0 : lo;
+}
