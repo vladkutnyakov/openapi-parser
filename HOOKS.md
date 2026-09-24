@@ -21,7 +21,7 @@
 ```js
 ({
   field(f) {
-    return `${f.indent}${f.key}${f.required ? '' : '?'}: ${f.type};`
+    return `${f.indent}${f.safeKey}${f.required ? '' : '?'}: ${f.type};`
   },
 })
 ```
@@ -38,7 +38,8 @@
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `f.key` | `string` | Имя поля |
+| `f.key` | `string` | Имя поля как в спеке, без кавычек |
+| `f.safeKey` | `string` | То же имя, готовое к вставке в тип: невалидный идентификатор (`filterDto.id`) уже в кавычках |
 | `f.type` | `string` | Готовый TS-тип без `?` и без конвенционного `\| null` (см. оговорку выше) |
 | `f.required` | `boolean` | Есть ли поле в `required` схемы |
 | `f.nullable` | `boolean` | `nullable: true` (3.0) или `type: [..., 'null']` (3.1) |
@@ -47,18 +48,18 @@
 | `f.schema` | `object?` | Исходная схема поля из спеки |
 | `f.docs` | `string[]` | Части JSDoc: description, enum-литералы, format, default |
 
-Возврат: строка целиком — включая отступ и завершающую точку с запятой. Генератор ничего к строке не дописывает: что вернул хук, то и попадёт в вывод. По умолчанию (без хука) строка выглядит как `${f.indent}${f.key}${f.required ? '' : '?'}: ${f.type};`.
+Возврат: строка целиком — включая отступ и завершающую точку с запятой. Генератор ничего к строке не дописывает: что вернул хук, то и попадёт в вывод. По умолчанию (без хука) строка выглядит как `${f.indent}${f.safeKey}${f.required ? '' : '?'}: ${f.type};`.
 
 ```js
 ({
   // Тот же классический стиль, что и по умолчанию, но без точки с запятой
   field(f) {
-    return `${f.indent}${f.key}${f.required ? '' : '?'}: ${f.type}`
+    return `${f.indent}${f.safeKey}${f.required ? '' : '?'}: ${f.type}`
   },
 })
 ```
 
-Ключ поля хук получает «как есть» — генератор не оборачивает его в кавычки. Если в спеке встречаются имена, невалидные как идентификаторы (`X-Total-Count`), кавычки ставит сам хук; в дефолтной ветке это делается автоматически.
+Для строки поля берите `f.safeKey`, а не `f.key`. В спеке бывают имена, которые не являются идентификаторами: `X-Total-Count`, `filterDto.id` (Spring так разворачивает вложенные query-параметры). Без кавычек такая строка ломает тип, и `f.safeKey` уже содержит их — ровно по тому же правилу, что и вывод по умолчанию. `f.key` остаётся сырым именем для условий вроде `f.key.startsWith('filter')`.
 
 `f.source` — главный инструмент: он позволяет применять разные конвенции к ответам и запросам.
 
@@ -68,9 +69,9 @@
     // в ответах всё обязательное, необязательное — через | null
     if (f.source === 'response') {
       const type = f.required ? f.type : `${f.type} | null`
-      return `${f.indent}${f.key}: ${type}`
+      return `${f.indent}${f.safeKey}: ${type}`
     }
-    return `${f.indent}${f.key}${f.required ? '' : '?'}: ${f.type}`
+    return `${f.indent}${f.safeKey}${f.required ? '' : '?'}: ${f.type}`
   },
 })
 ```
@@ -217,7 +218,7 @@
 ```js
 ({
   field(f) {
-    return `${f.indent}${f.key}${f.required ? '' : '?'}: ${f.type}`
+    return `${f.indent}${f.safeKey}${f.required ? '' : '?'}: ${f.type}`
   },
   declaration(d) {
     return d.isInterface
@@ -234,7 +235,7 @@
 ({
   field(f) {
     const prefix = f.source === 'response' ? 'readonly ' : ''
-    return `${f.indent}${prefix}${f.key}${f.required ? '' : '?'}: ${f.type};`
+    return `${f.indent}${prefix}${f.safeKey}${f.required ? '' : '?'}: ${f.type};`
   },
 })
 ```

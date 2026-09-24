@@ -37,10 +37,11 @@ const DEFAULT_PRESET_CODE_RU = `// Правила по умолчанию уже
 ({
   // Строка одного поля. f.type — "чистый" тип, без ? и | null:
   // что дописать, решает этот хук.
-  // f: { key, type, required, nullable, source, indent, schema, docs }
+  // f: { key, safeKey, type, required, nullable, source, indent, schema, docs }
+  //   safeKey — key, уже взятый в кавычки, если это не идентификатор
   //   source: 'response' | 'body' | 'query' | 'path'
   field(f) {
-    return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${f.type};\`
+    return \`\${f.indent}\${f.safeKey}\${f.required ? '' : '?'}: \${f.type};\`
   },
 
   // Примитив или enum → TS-тип
@@ -83,10 +84,11 @@ const DEFAULT_PRESET_CODE_EN = `// The default rules already apply — this code
 ({
   // One field line. f.type is the "clean" type, without ? and | null:
   // this hook decides what to append.
-  // f: { key, type, required, nullable, source, indent, schema, docs }
+  // f: { key, safeKey, type, required, nullable, source, indent, schema, docs }
+  //   safeKey — key, already quoted when it isn't an identifier
   //   source: 'response' | 'body' | 'query' | 'path'
   field(f) {
-    return \`\${f.indent}\${f.key}\${f.required ? '' : '?'}: \${f.type};\`
+    return \`\${f.indent}\${f.safeKey}\${f.required ? '' : '?'}: \${f.type};\`
   },
 
   // Primitive or enum → TS type

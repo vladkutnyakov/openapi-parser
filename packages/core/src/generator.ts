@@ -235,6 +235,7 @@ function renderParamsInterface(
         'field',
         {
           key: p.name ?? '',
+          safeKey: propKey(p.name ?? ''),
           type,
           required,
           nullable: isNullable(p.schema ?? {}),
@@ -550,6 +551,7 @@ function propertyLines(
       'field',
       {
         key,
+        safeKey: propKey(key),
         type,
         required,
         nullable: isNullable(schema ?? {}),

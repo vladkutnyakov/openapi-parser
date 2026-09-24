@@ -6,7 +6,14 @@ export type FieldSource = 'response' | 'body' | 'query' | 'path' | 'schema';
 export type TypeKind = 'dto' | 'response' | 'body' | 'query' | 'path';
 
 export interface FieldContext {
+  /** Имя поля как в спеке, без кавычек */
   key: string;
+  /**
+   * То же имя, готовое к вставке в TS: невалидный идентификатор (`filterDto.id`,
+   * `X-Total-Count`) уже в кавычках. Иначе каждый хук `field` повторял бы
+   * регулярку генератора сам — и забывал бы, ломая тип на первом таком ключе.
+   */
+  safeKey: string;
   /** Готовый TS-тип поля (уже с учётом $ref, массивов, вложенности) */
   type: string;
   required: boolean;

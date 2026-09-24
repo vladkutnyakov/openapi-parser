@@ -137,6 +137,18 @@ describe('хуки меняют вывод', () => {
     expect(out).toContain('export interface UserResponseDto {');
   });
 
+  it('field: safeKey уже в кавычках у невалидного идентификатора, key — сырой', () => {
+    const code = `({
+      field(f) {
+        return \`\${f.indent}\${f.safeKey}: \${f.type} // \${f.key}\`
+      }
+    })`;
+    const out = genFromCode('get /users', code);
+    expect(out).toContain("'filterDto.id': number // filterDto.id");
+    // обычный ключ кавычек не получает
+    expect(out).toContain('page: number // page');
+  });
+
   it('undefined из хука = поведение по умолчанию', () => {
     const withUndefined = genFromCode(
       'get /users/{id}',
@@ -198,6 +210,8 @@ describe('пресеты', () => {
       expect(error).toBeNull();
       expect(gen('get /users/{id}', hooks)).toBe(gen('get /users/{id}'));
       expect(gen('post /users', hooks)).toBe(gen('post /users'));
+      // ключ filterDto.id: образец обязан брать safeKey, а не сырой key
+      expect(gen('get /users', hooks)).toBe(gen('get /users'));
     });
 
     it('все встроенные пресеты компилируются без ошибок', () => {

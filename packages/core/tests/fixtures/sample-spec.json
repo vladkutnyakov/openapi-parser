@@ -9,7 +9,8 @@
         "parameters": [
           { "name": "page", "in": "query", "schema": { "type": "integer", "format": "int32", "default": 0 } },
           { "name": "size", "in": "query", "schema": { "type": "integer", "format": "int32", "default": 20 } },
-          { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/UserStatus" } }
+          { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/UserStatus" } },
+          { "name": "filterDto.id", "in": "query", "schema": { "type": "integer", "format": "int64" } }
         ],
         "responses": {
           "200": {

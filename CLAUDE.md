@@ -359,9 +359,9 @@ Ctrl+F в панели вывода: строка поиска, подсветк
 
 ## Тесты
 
-`packages/core/tests/` — generator, hooks, type-diff, url-state, spec-loader, recent-sources, find-matches, virtual-window; `packages/ui/tests/` — паритет словарей локализации; `apps/vscode/tests/` — разбор тем VSCode и полнота `package.nls*.json` (всего 223 теста). Логика в `core` тестируется напрямую, компоненты не тестируются.
+`packages/core/tests/` — generator, hooks, type-diff, url-state, spec-loader, recent-sources, find-matches, virtual-window; `packages/ui/tests/` — паритет словарей локализации; `apps/vscode/tests/` — разбор тем VSCode и полнота `package.nls*.json` (всего 224 теста). Логика в `core` тестируется напрямую, компоненты не тестируются.
 
-Для генератора есть фикстура `packages/core/tests/fixtures/sample-spec.json` в стиле типичного Spring-бэкенда: `$ref`, enum, `allOf`, `nullable`, вложенные DTO, циклическая ссылка, DTO одновременно в body и response, тело с двумя типами контента (`multipart/form-data` + `application/octet-stream`).
+Для генератора есть фикстура `packages/core/tests/fixtures/sample-spec.json` в стиле типичного Spring-бэкенда: `$ref`, enum, `allOf`, `nullable`, вложенные DTO, циклическая ссылка, DTO одновременно в body и response, тело с двумя типами контента (`multipart/form-data` + `application/octet-stream`), query-параметр с ключом-не-идентификатором (`filterDto.id`).
 
 Три теста охраняют важные инварианты — их нельзя ослаблять:
 
