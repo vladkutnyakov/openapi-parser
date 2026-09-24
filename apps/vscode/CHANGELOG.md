@@ -5,6 +5,22 @@ All notable changes to this extension are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-09-24
+
+### Added
+
+- The `field` hook now receives `f.safeKey`: the field name ready to go into a
+  type, already quoted when it is not a valid identifier (`X-Total-Count`,
+  `filterDto.id` — the way Spring flattens nested query parameters). `f.key`
+  stays the raw name for conditions like `f.key.startsWith('filter')`.
+
+### Fixed
+
+- The sample rules in the ⚙ editor used `f.key` to build field lines, so a
+  preset started from them broke the type on the first such name. The sample
+  now uses `f.safeKey`. Presets you already saved keep their code — replace
+  `f.key` with `f.safeKey` in their `field` hook to get the fix.
+
 ## [1.5.0] - 2026-09-23
 
 ### Added
