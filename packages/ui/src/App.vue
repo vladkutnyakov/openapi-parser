@@ -75,29 +75,54 @@ onMounted(() => {
 // ------------------------------------------------------------ ресайз сайдбара
 
 const SIDEBAR_KEY = 'openapi-parser:sidebar-width';
+const SIDEBAR_COLLAPSED_KEY = 'openapi-parser:sidebar-collapsed';
 const MIN_SIDEBAR = 220;
 const MAX_SIDEBAR = 800;
+// Ширина свёрнутой полосы: кнопка в высоту шапки (--control-height) с запасом по бокам.
+const RAIL_WIDTH = 50;
+// Ручку, утянутую левее, схлопываем, как сайдбар VSCode: между полосой и
+// минимальной шириной промежуточных состояний нет.
+const COLLAPSE_AT = MIN_SIDEBAR / 2;
 
 const sidebarWidth = ref(readSidebarWidth());
+// Ширина при сворачивании не трогается — разворот возвращает список к прежней.
+const sidebarCollapsed = ref(hostStorage.get(SIDEBAR_COLLAPSED_KEY) === '1');
+const columnWidth = computed(() => (sidebarCollapsed.value ? RAIL_WIDTH : sidebarWidth.value));
 
 function readSidebarWidth(): number {
   const saved = Number(hostStorage.get(SIDEBAR_KEY));
   return saved >= MIN_SIDEBAR && saved <= MAX_SIDEBAR ? saved : 340;
 }
 
+function setSidebarCollapsed(on: boolean) {
+  sidebarCollapsed.value = on;
+  hostStorage.set(SIDEBAR_COLLAPSED_KEY, on ? '1' : '0');
+}
+
 function startResize(e: PointerEvent) {
-  const startX = e.clientX;
-  const startWidth = sidebarWidth.value;
   const handle = e.currentTarget as HTMLElement;
+  // Ширина — от левого края области, а не приращением к стартовой: из свёрнутого
+  // состояния стартовой ширины списка нет, есть только полоса.
+  const left = handle.parentElement!.getBoundingClientRect().left;
+  const restoreWidth = sidebarWidth.value;
   handle.setPointerCapture(e.pointerId);
 
   const onMove = (ev: PointerEvent) => {
-    sidebarWidth.value = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, startWidth + ev.clientX - startX));
+    const raw = ev.clientX - left;
+    if (raw < COLLAPSE_AT) {
+      sidebarCollapsed.value = true;
+      // по пути к сворачиванию ширина дошла до минимума — разворот вернёт исходную
+      sidebarWidth.value = restoreWidth;
+    } else {
+      sidebarCollapsed.value = false;
+      sidebarWidth.value = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, raw));
+    }
   };
   const onUp = () => {
     handle.removeEventListener('pointermove', onMove);
     handle.removeEventListener('pointerup', onUp);
     hostStorage.set(SIDEBAR_KEY, String(sidebarWidth.value));
+    setSidebarCollapsed(sidebarCollapsed.value);
   };
   handle.addEventListener('pointermove', onMove);
   handle.addEventListener('pointerup', onUp);
@@ -120,18 +145,38 @@ function startResize(e: PointerEvent) {
       @submit-cookie="saveCookieAndRetry"
       @open-rules="hooksEditorOpen = true"
     />
-    <div class="content" :style="{ gridTemplateColumns: `${sidebarWidth}px 1fr` }">
+    <div class="content" :style="{ gridTemplateColumns: `${columnWidth}px 1fr` }">
+      <!--
+        Свёрнутый список — полоса с кнопкой, а не нулевая колонка: вернуть его надо
+        и тогда, когда эндпоинт не выбран и шапки вывода с кнопками нет вовсе.
+        v-if, а не v-show: виртуальный список мерил бы строки в колонке шириной в полосу.
+      -->
+      <div v-if="sidebarCollapsed" class="rail">
+        <button
+          class="rail-btn"
+          type="button"
+          :title="t('endpoints.expand')"
+          :aria-label="t('endpoints.expand')"
+          @click="setSidebarCollapsed(false)"
+        >
+          <svg class="rail-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3.5 4l4 4-4 4M7.5 4l4 4-4 4" />
+          </svg>
+        </button>
+      </div>
       <EndpointList
+        v-else
         v-model:search="search"
         v-model:method="method"
         :endpoints="endpoints"
         :selected-id="selectedId"
         :loading="loading"
         @select="(e) => (selectedId = e.id)"
+        @collapse="setSidebarCollapsed(true)"
       />
       <div
         class="resizer"
-        :style="{ left: `${sidebarWidth}px` }"
+        :style="{ left: `${columnWidth}px` }"
         :title="t('output.resize')"
         @pointerdown.prevent="startResize"
       />
@@ -321,5 +366,39 @@ body {
 .resizer:hover,
 .resizer:active {
   background: var(--accent);
+}
+.rail {
+  display: flex;
+  justify-content: center;
+  padding-top: 10px;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+}
+/* иконка рисуется currentColor, поэтому color обязателен — иначе чёрная в тёмной теме */
+.rail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+}
+.rail-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.rail-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 </style>

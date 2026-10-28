@@ -48,6 +48,8 @@ export const ru = {
   'endpoints.empty': 'Загрузите спеку, чтобы увидеть эндпоинты',
   'endpoints.loading': 'Загружаем спеку…',
   'endpoints.notFound': 'Ничего не найдено',
+  'endpoints.collapse': 'Свернуть список эндпоинтов',
+  'endpoints.expand': 'Показать список эндпоинтов',
 
   // ---------------------------------------------------------------- вывод типов
   'output.empty': 'Выберите эндпоинт слева — здесь появятся TS-типы',
@@ -76,7 +78,7 @@ export const ru = {
   'output.copySection': 'Копировать секцию',
   'output.copySectionTitle': 'Копирует все типы секции без комментариев',
   'output.toggleSection': 'Свернуть / развернуть секцию',
-  'output.resize': 'Потяните, чтобы изменить ширину',
+  'output.resize': 'Потяните, чтобы изменить ширину; до упора влево — свернуть',
   'output.findPlaceholder': 'Найти в типах',
   'output.findPrev': 'Предыдущее совпадение (Shift+Enter)',
   'output.findNext': 'Следующее совпадение (Enter)',

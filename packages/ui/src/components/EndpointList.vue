@@ -9,7 +9,7 @@ const props = defineProps<{
   loading: boolean;
 }>();
 
-const emit = defineEmits<{ select: [entry: EndpointEntry] }>();
+const emit = defineEmits<{ select: [entry: EndpointEntry]; collapse: [] }>();
 
 // состояние фильтров живёт в URL (см. useUrlState), сюда приходит через v-model
 const search = defineModel<string>('search', { required: true });
@@ -146,6 +146,17 @@ watch(
       <select v-model="methodFilter" class="method-filter">
         <option v-for="m in methods" :key="m" :value="m">{{ m }}</option>
       </select>
+      <button
+        class="collapse-btn"
+        type="button"
+        :title="t('endpoints.collapse')"
+        :aria-label="t('endpoints.collapse')"
+        @click="emit('collapse')"
+      >
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8.5 4L4.5 8l4 4M12.5 4L8.5 8l4 4" />
+        </svg>
+      </button>
     </div>
 
     <!--
@@ -226,6 +237,34 @@ watch(
   background: var(--bg);
   color: var(--text);
   font-size: 12px;
+}
+/* квадрат в высоту шапки; иконка рисуется currentColor, поэтому color обязателен */
+.collapse-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+}
+.collapse-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .empty {
   padding: 16px;

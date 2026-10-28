@@ -39,6 +39,8 @@ export const en: Messages = {
   'endpoints.empty': 'Load a spec to see its endpoints',
   'endpoints.loading': 'Loading the spec…',
   'endpoints.notFound': 'Nothing found',
+  'endpoints.collapse': 'Collapse the endpoint list',
+  'endpoints.expand': 'Show the endpoint list',
 
   // ---------------------------------------------------------------- вывод типов
   'output.empty': 'Pick an endpoint on the left — the TS types will show up here',
@@ -63,7 +65,7 @@ export const en: Messages = {
   'output.copySection': 'Copy section',
   'output.copySectionTitle': 'Copies every type in the section without comments',
   'output.toggleSection': 'Collapse / expand section',
-  'output.resize': 'Drag to resize',
+  'output.resize': 'Drag to resize; drag all the way left to collapse',
   'output.findPlaceholder': 'Find in types',
   'output.findPrev': 'Previous match (Shift+Enter)',
   'output.findNext': 'Next match (Enter)',
