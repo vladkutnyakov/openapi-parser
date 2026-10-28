@@ -238,28 +238,32 @@ watch(
   color: var(--text);
   font-size: 12px;
 }
-/* квадрат в высоту шапки; иконка рисуется currentColor, поэтому color обязателен */
+/*
+ * Узкая и без рамки: это служебная кнопка, а не поле фильтра, и место в шапке нужнее
+ * строке поиска. Иконка рисуется currentColor, поэтому color обязателен.
+ */
 .collapse-btn {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: var(--control-height);
+  width: 18px;
   height: var(--control-height);
+  margin-right: -4px;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
   color: var(--muted);
   cursor: pointer;
 }
 .collapse-btn:hover {
-  border-color: var(--accent);
+  background: var(--hover);
   color: var(--text);
 }
 .icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.3;

@@ -78,8 +78,8 @@ const SIDEBAR_KEY = 'openapi-parser:sidebar-width';
 const SIDEBAR_COLLAPSED_KEY = 'openapi-parser:sidebar-collapsed';
 const MIN_SIDEBAR = 220;
 const MAX_SIDEBAR = 800;
-// Ширина свёрнутой полосы: кнопка в высоту шапки (--control-height) с запасом по бокам.
-const RAIL_WIDTH = 50;
+// Ширина свёрнутой полосы: узкая кнопка разворота с запасом по бокам.
+const RAIL_WIDTH = 28;
 // Ручку, утянутую левее, схлопываем, как сайдбар VSCode: между полосой и
 // минимальной шириной промежуточных состояний нет.
 const COLLAPSE_AT = MIN_SIDEBAR / 2;
@@ -375,26 +375,27 @@ body {
   background: var(--panel);
 }
 /* иконка рисуется currentColor, поэтому color обязателен — иначе чёрная в тёмной теме */
+/* в пару кнопке сворачивания в шапке списка: узкая, без рамки */
 .rail-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--control-height);
+  width: 18px;
   height: var(--control-height);
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
   color: var(--muted);
   cursor: pointer;
 }
 .rail-btn:hover {
-  border-color: var(--accent);
+  background: var(--hover);
   color: var(--text);
 }
 .rail-icon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.3;
