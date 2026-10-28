@@ -133,7 +133,7 @@ async function onSectionToggle(kind: TypeKind, e: MouseEvent) {
   const area = scrollArea.value;
   const section = (e.currentTarget as HTMLElement).closest<HTMLElement>('.section');
   const collapsing = !collapsed.value.has(kind);
-  const stickyTop = area ? area.getBoundingClientRect().top + toolbarHeight.value : 0;
+  const stickyTop = area ? area.getBoundingClientRect().top : 0;
   const stuck = !!area && !!section && section.getBoundingClientRect().top < stickyTop;
   toggleSection(kind);
   if (!collapsing || !stuck) return;
@@ -180,22 +180,22 @@ const { open: hooksEditorOpen } = useHooksEditor();
 
 const scrollArea = ref<HTMLElement | null>(null);
 const blocksRoot = ref<HTMLElement | null>(null);
-const toolbar = ref<HTMLElement | null>(null);
 
 /*
- * Высота липкой шапки — отступ для липких заголовков секций (--toolbar-h).
- * Меряется, а не считается из токенов: в панели VSCode шрифт приезжает из темы
- * редактора, а длинный summary может менять высоту строки. Шапка живёт внутри
+ * Видимая ширина области прокрутки (--area-w). Содержимое шире неё, когда типы
+ * длинные, а заголовкам секций и рамкам блоков нужна именно видимая ширина:
+ * процентами её не взять, проценты считаются от широкого содержимого. Floor —
+ * чтобы дробный остаток не дал лишней полосы прокрутки. Область живёт внутри
  * v-else, поэтому наблюдатель переподключается по появлению элемента.
  */
-const toolbarHeight = ref(0);
-let toolbarObserver: ResizeObserver | undefined;
-watch(toolbar, (el) => {
-  toolbarObserver?.disconnect();
-  toolbarObserver = undefined;
+const areaWidth = ref(0);
+let areaObserver: ResizeObserver | undefined;
+watch(scrollArea, (el) => {
+  areaObserver?.disconnect();
+  areaObserver = undefined;
   if (!el) return;
-  toolbarObserver = new ResizeObserver(() => (toolbarHeight.value = el.offsetHeight));
-  toolbarObserver.observe(el);
+  areaObserver = new ResizeObserver(([entry]) => (areaWidth.value = Math.floor(entry.contentRect.width)));
+  areaObserver.observe(el);
 });
 const findBar = ref<InstanceType<typeof FindBar> | null>(null);
 
@@ -321,9 +321,7 @@ function rebuildHighlights(fromViewport = false) {
       (i) => ranges[i].compareBoundaryPoints(Range.START_TO_START, prev) < 0,
     );
   } else {
-    const area = scrollArea.value;
-    const toolbarH = area?.querySelector('.toolbar')?.getBoundingClientRect().height ?? 0;
-    const top = (area?.getBoundingClientRect().top ?? 0) + toolbarH;
+    const top = scrollArea.value?.getBoundingClientRect().top ?? 0;
     activeIndex.value = anchoredMatchIndex(ranges.length, (i) => isAboveViewport(ranges[i], top));
   }
   paintHighlights();
@@ -382,27 +380,24 @@ function scrollRangeIntoView(range: Range) {
   if (!rect.height && !rect.width) return;
   const box = area.getBoundingClientRect();
 
-  // .toolbar внутри области sticky и лежит поверх кода: совпадение, доведённое
-  // ровно до верха, спряталось бы под ним
-  const toolbarH = area.querySelector('.toolbar')?.getBoundingClientRect().height ?? 0;
-  // под шапкой прилипает ещё и заголовок секции, в которой лежит совпадение
+  // сверху прилипает заголовок секции, в которой лежит совпадение: доведённое
+  // ровно до верха, оно спряталось бы под ним
   const start = range.startContainer;
   const startEl = start instanceof Element ? start : start.parentElement;
   const headH = startEl?.closest('.section')?.querySelector('.section-head')?.getBoundingClientRect().height ?? 0;
 
-  const above = rect.top - (box.top + toolbarH + headH);
-  const below = rect.bottom - box.bottom;
+  // Низ и правый край — по client-размерам, а не по рамке: рамка включает полосы
+  // прокрутки, и совпадение у края пряталось бы под ними.
+  const above = rect.top - (box.top + headH);
+  const below = rect.bottom - (box.top + area.clientHeight);
   if (above < 0) area.scrollTop += above - SCROLL_MARGIN;
   else if (below > 0) area.scrollTop += below + SCROLL_MARGIN;
 
-  // типы бывают широкими, а по горизонтали прокручивается свой pre, а не вся область
-  const pre = startEl?.closest('pre.code');
-  if (!pre) return;
-  const preBox = pre.getBoundingClientRect();
-  const left = rect.left - preBox.left;
-  const right = rect.right - preBox.right;
-  if (left < 0) pre.scrollLeft += left - SCROLL_MARGIN;
-  else if (right > 0) pre.scrollLeft += right + SCROLL_MARGIN;
+  // типы бывают широкими — горизонталь считаем так же
+  const left = rect.left - box.left;
+  const right = rect.right - (box.left + area.clientWidth);
+  if (left < 0) area.scrollLeft += left - SCROLL_MARGIN;
+  else if (right > 0) area.scrollLeft += right + SCROLL_MARGIN;
 }
 
 // v-html пересоздаёт поддерево целиком, поэтому после смены эндпоинта собранные
@@ -478,7 +473,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  toolbarObserver?.disconnect();
+  areaObserver?.disconnect();
   document.removeEventListener('keydown', onDocKeydown);
   document.removeEventListener('pointerdown', onDocPointerdown);
   // реестр подсветок глобальный на документ — иначе она пережила бы компонент
@@ -491,9 +486,9 @@ onBeforeUnmount(() => {
     <p v-if="!blocks.length" class="empty">{{ t('output.empty') }}</p>
     <template v-else>
       <!--
-        Строка поиска стоит над областью прокрутки, а не внутри неё: .toolbar там уже
-        sticky на top: 0, и два липких элемента наехали бы друг на друга. Заодно
-        подкрутке к совпадению не приходится вычитать её высоту.
+        Строка поиска и шапка эндпоинта стоят над областью прокрутки, а не внутри неё:
+        прокрутка общая на обе оси, и изнутри шапку утаскивало бы вбок вместе с кодом.
+        Заодно подкрутке к совпадению не приходится вычитать их высоту.
       -->
       <FindBar
         v-if="findOpen"
@@ -506,59 +501,59 @@ onBeforeUnmount(() => {
         @close="closeFind"
         @clear-scope="clearScope"
       />
-      <div ref="scrollArea" class="scroll-area" :style="{ '--toolbar-h': `${toolbarHeight}px` }">
-        <div ref="toolbar" class="toolbar">
+      <div class="toolbar">
+        <!--
+          Заголовок эндпоинта живёт в шапке над прокруткой: при прокрутке длинного
+          вывода должно оставаться видно, чьи это типы. Это не код, а факты о ручке —
+          рисуются интерфейсом, а не комментарием внутри <pre>. Метод и путь —
+          первой строкой, summary — второй, обе с многоточием. summary приходит
+          из спеки и не переводится.
+        -->
+        <header v-if="header" class="endpoint">
           <!--
-            Заголовок эндпоинта живёт в липкой шапке: при прокрутке длинного вывода
-            должно оставаться видно, чьи это типы. Это не код, а факты о ручке —
-            рисуются интерфейсом, а не комментарием внутри <pre>. Метод и путь —
-            первой строкой, summary — второй, обе с многоточием. summary приходит
-            из спеки и не переводится.
+            Метод с путём — своей строкой-обёрткой, а не соседями summary во flex-wrap:
+            при переносе длинный путь уезжал бы под метод целиком вместо многоточия.
           -->
-          <header v-if="header" class="endpoint">
+          <div class="endpoint-line">
+            <span class="endpoint-method method-badge" :data-method="header.method">{{ header.method }}</span>
             <!--
-              Метод с путём — своей строкой-обёрткой, а не соседями summary во flex-wrap:
-              при переносе длинный путь уезжал бы под метод целиком вместо многоточия.
+              Путь — кнопка, а не span с @click: по нему кликают, значит он должен
+              доставаться с клавиатуры и называть себя скринридеру. Копируется голый
+              путь без метода: его вставляют в код клиента, а не в лог.
             -->
-            <div class="endpoint-line">
-              <span class="endpoint-method method-badge" :data-method="header.method">{{ header.method }}</span>
-              <!--
-                Путь — кнопка, а не span с @click: по нему кликают, значит он должен
-                доставаться с клавиатуры и называть себя скринридеру. Копируется голый
-                путь без метода: его вставляют в код клиента, а не в лог.
-              -->
-              <button
-                class="endpoint-path"
-                type="button"
-                :title="t('output.copyPathTitle')"
-                @click="copy(header.path!, '__path')"
-              >
-                {{ header.path }}
-              </button>
-              <!--
-                Соседом кнопки, а не внутри: путь обрезается многоточием, и подпись
-                внутри него уезжала бы под обрезку. v-if — место под неё не резервируется.
-              -->
-              <span v-if="copiedKey === '__path'" class="endpoint-copied">{{ t('output.copied') }}</span>
-            </div>
-            <span v-if="header.summary" class="endpoint-summary" :title="header.summary">{{ header.summary }}</span>
-          </header>
-          <button
-            class="copy-btn copy-btn--icon copy-btn--all"
-            type="button"
-            :title="t('output.copyAllTitle')"
-            :aria-label="t('output.copyAll')"
-            @click="copy(allCode, '__all')"
-          >
-            <svg v-if="copiedKey === '__all'" class="icon icon--ok" viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M3.5 8.5l3 3 6-6" />
-            </svg>
-            <svg v-else class="icon" viewBox="0 0 16 16" aria-hidden="true">
-              <rect x="5.5" y="5.5" width="8" height="9" rx="1.5" />
-              <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
-            </svg>
-          </button>
-        </div>
+            <button
+              class="endpoint-path"
+              type="button"
+              :title="t('output.copyPathTitle')"
+              @click="copy(header.path!, '__path')"
+            >
+              {{ header.path }}
+            </button>
+            <!--
+              Соседом кнопки, а не внутри: путь обрезается многоточием, и подпись
+              внутри него уезжала бы под обрезку. v-if — место под неё не резервируется.
+            -->
+            <span v-if="copiedKey === '__path'" class="endpoint-copied">{{ t('output.copied') }}</span>
+          </div>
+          <span v-if="header.summary" class="endpoint-summary" :title="header.summary">{{ header.summary }}</span>
+        </header>
+        <button
+          class="copy-btn copy-btn--icon copy-btn--all"
+          type="button"
+          :title="t('output.copyAllTitle')"
+          :aria-label="t('output.copyAll')"
+          @click="copy(allCode, '__all')"
+        >
+          <svg v-if="copiedKey === '__all'" class="icon icon--ok" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3.5 8.5l3 3 6-6" />
+          </svg>
+          <svg v-else class="icon" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="5.5" y="5.5" width="8" height="9" rx="1.5" />
+            <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
+          </svg>
+        </button>
+      </div>
+      <div ref="scrollArea" class="scroll-area" :style="areaWidth ? { '--area-w': `${areaWidth}px` } : undefined">
         <div ref="blocksRoot" class="blocks">
 
           <section
@@ -711,17 +706,12 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background: var(--bg);
 }
-/*
- * Только вертикаль: по горизонтали прокручивается каждый pre.code сам. Прокрутка
- * всей области утаскивала бы влево шапку с адресом, а у неё, заголовков секций и
- * рамки блока ширина видимой части — справа они обрывались бы посреди кода.
- */
+/* Одна прокрутка на обе оси: широкие типы листаются одной полосой, а не каждый своей. */
 .scroll-area {
   position: relative;
   flex: 1;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: auto;
 }
 .empty {
   padding: 24px;
@@ -729,10 +719,8 @@ onBeforeUnmount(() => {
   font-size: 14px;
 }
 .toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
@@ -796,8 +784,22 @@ onBeforeUnmount(() => {
   color: var(--success);
   stroke-width: 1.8;
 }
+/*
+ * Ширина — по самому широкому типу, но не уже видимой части: тогда полоса
+ * прокрутки одна на весь вывод, а фон и рамки не обрываются посреди кода.
+ *
+ * Горизонтального падинга здесь нет: он у .section-body, чтобы липкий заголовок
+ * секции мог занять всю видимую ширину — иначе в полосах падинга по бокам от него
+ * просвечивал бы прокручиваемый код.
+ *
+ * Видимую ширину внутри берут из --area-w за вычетом отступов слева и справа:
+ * 16px — поля .section-body, ещё 12px слева — его отбивка (10px падинг + 2px
+ * полоса). Меняя эти отступы, правьте и calc ниже.
+ */
 .blocks {
-  padding: 8px 16px 24px;
+  width: max-content;
+  min-width: 100%;
+  padding: 8px 0 24px;
 }
 /*
  * Заголовок эндпоинта в липкой шапке. Метод — бейджем того же цвета, что в сайдбаре
@@ -872,7 +874,9 @@ onBeforeUnmount(() => {
  * и набраны пропорциональным шрифтом — так их видно как подпись к типу,
  * а не как очередную строку TypeScript.
  */
+/* max-width — иначе длинное описание ответа не переносилось бы, а растягивало вывод вбок */
 .block-meta {
+  max-width: calc(var(--area-w) - 44px);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -915,20 +919,25 @@ onBeforeUnmount(() => {
   margin-top: 14px;
 }
 /*
- * Заголовок секции липнет под шапкой эндпоинта: в длинной секции DTO иначе не
- * видно, к какой категории относится код на экране, а свернуть или скопировать
- * её можно было бы, только долистав до начала. Липнет в пределах своей секции —
- * следующая выталкивает предыдущую сама. Фон обязателен: код под ним не должен
- * просвечивать. z-index ниже, чем у .toolbar, чтобы шапка оставалась сверху.
+ * Заголовок секции липнет к верху области: в длинной секции DTO иначе не видно,
+ * к какой категории относится код на экране, а свернуть или скопировать её можно
+ * было бы, только долистав до начала. Липнет в пределах своей секции — следующая
+ * выталкивает предыдущую сама. Фон обязателен: код под ним не должен просвечивать.
+ *
+ * Липнет и слева, во всю видимую ширину: при горизонтальной прокрутке кнопка
+ * копирования секции иначе уезжала бы за край вместе с кодом. Отступ от краёв —
+ * падингом внутри, а не зазором снаружи: в зазоре просвечивал бы код.
  */
 .section-head {
   position: sticky;
-  top: var(--toolbar-h, 0px);
+  top: 0;
+  left: 0;
   z-index: 1;
+  width: var(--area-w);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 4px 16px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
@@ -978,7 +987,7 @@ onBeforeUnmount(() => {
  * App.vue, поэтому в панели VSCode они автоматически приезжают из темы редактора.
  */
 .section-body {
-  margin-top: 4px;
+  margin: 4px 16px 0;
   padding-left: 10px;
   border-left: 2px solid var(--muted);
 }
@@ -994,7 +1003,13 @@ onBeforeUnmount(() => {
 .section--response .section-body {
   border-left-color: var(--danger);
 }
+/*
+ * По своему коду, но не уже видимой части: рамка .block--scoped обводит именно
+ * этот тип — и при прокрутке вправо, и у короткого типа рядом с широким.
+ */
 .block {
+  width: max-content;
+  min-width: calc(var(--area-w) - 44px);
   margin-bottom: 4px;
 }
 /* блок, которым ограничен поиск: видно, почему в соседних DTO подсветки нет */
@@ -1015,7 +1030,6 @@ onBeforeUnmount(() => {
 }
 .code {
   margin: 0;
-  overflow-x: auto;
   font: 13px/1.6 ui-monospace, Consolas, 'Courier New', monospace;
 }
 .code .hljs {
