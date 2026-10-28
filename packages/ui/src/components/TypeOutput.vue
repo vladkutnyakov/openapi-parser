@@ -395,11 +395,14 @@ function scrollRangeIntoView(range: Range) {
   if (above < 0) area.scrollTop += above - SCROLL_MARGIN;
   else if (below > 0) area.scrollTop += below + SCROLL_MARGIN;
 
-  // типы бывают широкими — горизонталь считаем так же
-  const left = rect.left - box.left;
-  const right = rect.right - box.right;
-  if (left < 0) area.scrollLeft += left - SCROLL_MARGIN;
-  else if (right > 0) area.scrollLeft += right + SCROLL_MARGIN;
+  // типы бывают широкими, а по горизонтали прокручивается свой pre, а не вся область
+  const pre = startEl?.closest('pre.code');
+  if (!pre) return;
+  const preBox = pre.getBoundingClientRect();
+  const left = rect.left - preBox.left;
+  const right = rect.right - preBox.right;
+  if (left < 0) pre.scrollLeft += left - SCROLL_MARGIN;
+  else if (right > 0) pre.scrollLeft += right + SCROLL_MARGIN;
 }
 
 // v-html пересоздаёт поддерево целиком, поэтому после смены эндпоинта собранные
@@ -708,11 +711,17 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background: var(--bg);
 }
+/*
+ * Только вертикаль: по горизонтали прокручивается каждый pre.code сам. Прокрутка
+ * всей области утаскивала бы влево шапку с адресом, а у неё, заголовков секций и
+ * рамки блока ширина видимой части — справа они обрывались бы посреди кода.
+ */
 .scroll-area {
   position: relative;
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .empty {
   padding: 24px;
@@ -1006,6 +1015,7 @@ onBeforeUnmount(() => {
 }
 .code {
   margin: 0;
+  overflow-x: auto;
   font: 13px/1.6 ui-monospace, Consolas, 'Courier New', monospace;
 }
 .code .hljs {
