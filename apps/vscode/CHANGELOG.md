@@ -5,6 +5,40 @@ All notable changes to this extension are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-28
+
+### Added
+
+- A type map on the right of the output lists every section and the types in
+  it. Click a name to jump to that type — a collapsed section or type opens on
+  the way. A filter at the top narrows the list by name; Enter jumps to the
+  first match. The type on screen is highlighted as you scroll. Toggle the map
+  with the button next to "Copy all".
+- Each type can be collapsed on its own, and its header (name, copy and compare
+  buttons) sticks under the section header while you scroll a long DTO. A
+  collapsed type stays collapsed on other endpoints until the panel is reopened.
+- The endpoint list can be collapsed to a narrow strip — with the button in its
+  header, or by dragging its edge all the way to the left.
+- In the comparison panel the input and result panes can be resized by dragging
+  the divider between them.
+- Clicking the type name in the comparison panel copies it.
+
+### Changed
+
+- Wide types scroll sideways together, with one scrollbar for the whole output.
+  The endpoint header, section headers and type headers stay in place, and
+  backgrounds and frames run to the end of the code.
+- The comparison verdict is an icon next to the type name instead of a line
+  above the result, so both panes are the same size. A long type name is
+  shortened with an ellipsis instead of pushing the controls off a narrow panel.
+
+### Fixed
+
+- Ctrl+C copies text selected with the mouse in the panel. It used to work only
+  in input fields.
+- In the line diff, the green and red line backgrounds stopped at the edge of
+  the visible area and were missing on the part you had to scroll to.
+
 ## [1.6.0] - 2026-09-24
 
 ### Added

@@ -3,7 +3,7 @@
   "//displayName": "Имя продукта в Marketplace намеренно не локализуется: %ключ% сделал бы название расширения разным у читателей с разным языком.",
   "displayName": "OpenAPI Types Tools",
   "description": "%extension.description%",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "author": {
     "name": "Vlad Kutnyakov",
     "email": "kutnyakov1@yandex.ru",

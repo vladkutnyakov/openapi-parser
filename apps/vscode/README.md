@@ -20,6 +20,7 @@ Built so you don't have to retype types from Swagger UI by hand, or eyeball cont
 - **Type comparison** — press "Compare" on a block, paste your type from the codebase, and see field by field where it drifted from the contract.
 - **Generation rules** (⚙ button) — adapt the output to your project's conventions (`| null` instead of `?`, no semicolons, etc.) with JS hooks and a live preview. Rules can be saved to a `.js` file and shared with your team.
 - **Search** — Ctrl+F searches the generated types.
+- **Type map** — a panel beside the output lists sections and types; click a name to jump to it, or filter by name.
 - **Specs behind a login** — if the source redirects to a sign-in page, the panel lets you sign in and paste a session cookie.
 - **Russian and English** interface, switchable with the `RU`/`EN` button.
 
