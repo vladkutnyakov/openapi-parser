@@ -77,7 +77,8 @@ export const en: Messages = {
   'output.generationError': (p) => `// Generation error: ${p.message}`,
 
   // ---------------------------------------------------------------- сравнение типов
-  'diff.title': 'Comparing: ',
+  'diff.copyName': 'Copy the type name',
+  'diff.resize': 'Drag to resize',
   'diff.modeFields': 'By field',
   'diff.modeLines': 'Diff',
   'diff.close': 'Close',
@@ -85,8 +86,8 @@ export const en: Messages = {
   'diff.hintEmpty': 'Your type goes on the left, the diff shows up here',
   'diff.hintUnparsed': "Couldn't parse the type — paste an interface, a type or an object literal",
   'diff.hintSpecUnparsed': "The spec type couldn't be parsed for comparison",
-  'diff.equal': '✓ Types match',
-  'diff.different': 'Differences:',
+  'diff.equal': 'Types match',
+  'diff.different': 'Types differ',
   'diff.missing': 'in the spec, missing in yours',
   'diff.extra': 'in yours, missing in the spec',
   'diff.optional': 'optional (?)',

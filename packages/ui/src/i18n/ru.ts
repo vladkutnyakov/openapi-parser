@@ -92,7 +92,8 @@ export const ru = {
   'output.generationError': (p: { message: string }) => `// Ошибка генерации: ${p.message}`,
 
   // ---------------------------------------------------------------- сравнение типов
-  'diff.title': 'Сравнение: ',
+  'diff.copyName': 'Скопировать название типа',
+  'diff.resize': 'Потяните, чтобы изменить ширину',
   'diff.modeFields': 'По полям',
   'diff.modeLines': 'Diff',
   'diff.close': 'Закрыть',
@@ -100,8 +101,8 @@ export const ru = {
   'diff.hintEmpty': 'Слева — ваш тип, здесь появится дифф',
   'diff.hintUnparsed': 'Не удалось распознать тип — вставьте interface, type или объектный литерал',
   'diff.hintSpecUnparsed': 'Тип из спеки не удалось разобрать для сравнения',
-  'diff.equal': '✓ Типы совпадают',
-  'diff.different': 'Есть отличия:',
+  'diff.equal': 'Типы совпадают',
+  'diff.different': 'Есть отличия',
   'diff.missing': 'есть в спеке, отсутствует у вас',
   'diff.extra': 'есть у вас, нет в спеке',
   'diff.optional': 'необязательное (?)',
