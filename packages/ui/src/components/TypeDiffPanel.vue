@@ -305,7 +305,11 @@ const rows = computed<Row[]>(() =>
 .row--same {
   opacity: 0.55;
 }
+/* Grid, а не блок: колонка вырастает до самой длинной строки (white-space: pre),
+   и все строки тянутся до неё — иначе фон +/- обрывался бы на видимой ширине
+   при горизонтальной прокрутке. */
 .diff-code {
+  display: grid;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
