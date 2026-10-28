@@ -141,6 +141,41 @@ async function onSectionToggle(kind: TypeKind, e: MouseEvent) {
   area!.scrollTop += section!.getBoundingClientRect().top - stickyTop;
 }
 
+// ------------------------------------------------------------ сворачивание типов
+
+// По имени типа, а не по индексу: та же DTO на соседнем эндпоинте остаётся свёрнутой.
+// Только на время сессии — в отличие от секций, имён много, и хранилище копило бы
+// их без конца.
+const collapsedBlocks = ref<Set<string>>(new Set());
+
+function toggleBlock(name: string) {
+  const next = new Set(collapsedBlocks.value);
+  if (next.has(name)) next.delete(name);
+  else next.add(name);
+  collapsedBlocks.value = next;
+}
+
+/**
+ * То же, что onSectionToggle, но на уровень ниже: заголовок типа липнет под
+ * заголовком секции. Над заголовком типа бывает строка метаданных, поэтому его
+ * естественное место считаем от низа свёрнутого блока — ниже заголовка там
+ * ничего не остаётся.
+ */
+async function onBlockToggle(name: string, e: MouseEvent) {
+  const area = scrollArea.value;
+  const head = (e.currentTarget as HTMLElement).closest<HTMLElement>('.block-head');
+  const block = head?.closest<HTMLElement>('.block');
+  if (!area || !head || !block) return toggleBlock(name);
+  const collapsing = !collapsedBlocks.value.has(name);
+  const sectionHeadH = block.closest('.section')?.querySelector<HTMLElement>('.section-head')?.offsetHeight ?? 0;
+  const stickyTop = area.getBoundingClientRect().top + sectionHeadH;
+  const stuck = block.getBoundingClientRect().top < stickyTop;
+  toggleBlock(name);
+  if (!collapsing || !stuck) return;
+  await nextTick();
+  area.scrollTop += block.getBoundingClientRect().bottom - head.offsetHeight - stickyTop;
+}
+
 // открытая панель сравнения: имя типа + его чистый код
 const compare = ref<{ name: string; code: string } | null>(null);
 
@@ -254,15 +289,17 @@ function nodeAt(nodes: { node: Text; start: number }[], offset: number): { node:
 /**
  * Совпадение выше видимой области — то есть пользователь его уже пролистал.
  *
- * У совпадения в свёрнутой секции рамка нулевая, и без подмены оно считалось бы
- * «выше экрана» даже внизу вывода. Берём рамку самой секции: её заголовок виден.
+ * У совпадения в свёрнутом типе или секции рамка нулевая, и без подмены оно
+ * считалось бы «выше экрана» даже внизу вывода. Берём рамку ближайшего видимого
+ * предка: свёрнутого типа (его заголовок виден), а если свёрнута вся секция — её.
  */
 function isAboveViewport(range: Range, top: number): boolean {
   let rect: DOMRect | undefined = range.getBoundingClientRect();
   if (!rect.height && !rect.width) {
     const start = range.startContainer;
     const el = start instanceof Element ? start : start.parentElement;
-    rect = el?.closest('.section')?.getBoundingClientRect();
+    rect = el?.closest('.block')?.getBoundingClientRect();
+    if (!rect?.height) rect = el?.closest('.section')?.getBoundingClientRect();
   }
   return !!rect && rect.bottom <= top;
 }
@@ -328,22 +365,30 @@ function rebuildHighlights(fromViewport = false) {
 }
 
 /**
- * Развернуть секцию, внутри которой оказалось совпадение.
+ * Развернуть секцию и тип, внутри которых оказалось совпадение.
  *
- * Без этого шаг поиска в свёрнутую секцию выглядел бы сломанным: узел скрыт,
+ * Без этого шаг поиска в свёрнутое выглядел бы сломанным: узел скрыт,
  * getBoundingClientRect даёт нули, и scrollRangeIntoView молча ничего не делает —
  * счётчик растёт, а панель стоит на месте.
  *
  * Возвращает true, если что-то развернули: вызывающему нужно дождаться перерисовки,
  * иначе он померит всё те же нулевые размеры.
  */
-function revealSection(range: Range): boolean {
+function revealMatch(range: Range): boolean {
   const start = range.startContainer;
   const el = start instanceof Element ? start : start.parentElement;
+  let revealed = false;
   const kind = el?.closest<HTMLElement>('.section')?.dataset.kind as TypeKind | undefined;
-  if (!kind || !collapsed.value.has(kind)) return false;
-  toggleSection(kind);
-  return true;
+  if (kind && collapsed.value.has(kind)) {
+    toggleSection(kind);
+    revealed = true;
+  }
+  const name = el?.closest<HTMLElement>('.block')?.dataset.name;
+  if (name && collapsedBlocks.value.has(name)) {
+    toggleBlock(name);
+    revealed = true;
+  }
+  return revealed;
 }
 
 /** Разложить найденное по двум реестрам: текущее совпадение красится ярче остальных. */
@@ -359,8 +404,8 @@ async function paintHighlights() {
   else CSS.highlights.delete(HL_ALL);
   if (active) {
     CSS.highlights.set(HL_ACTIVE, new Highlight(active));
-    // размеры появляются только после перерисовки развёрнутой секции
-    if (revealSection(active)) await nextTick();
+    // размеры появляются только после перерисовки развёрнутого
+    if (revealMatch(active)) await nextTick();
     scrollRangeIntoView(active);
   } else {
     CSS.highlights.delete(HL_ACTIVE);
@@ -380,11 +425,13 @@ function scrollRangeIntoView(range: Range) {
   if (!rect.height && !rect.width) return;
   const box = area.getBoundingClientRect();
 
-  // сверху прилипает заголовок секции, в которой лежит совпадение: доведённое
-  // ровно до верха, оно спряталось бы под ним
+  // сверху прилипают заголовки секции и типа, в которых лежит совпадение:
+  // доведённое ровно до верха, оно спряталось бы под ними
   const start = range.startContainer;
   const startEl = start instanceof Element ? start : start.parentElement;
-  const headH = startEl?.closest('.section')?.querySelector('.section-head')?.getBoundingClientRect().height ?? 0;
+  const headH =
+    (startEl?.closest('.section')?.querySelector('.section-head')?.getBoundingClientRect().height ?? 0) +
+    (startEl?.closest('.block')?.querySelector('.block-head')?.getBoundingClientRect().height ?? 0);
 
   // Низ и правый край — по client-размерам, а не по рамке: рамка включает полосы
   // прокрутки, и совпадение у края пряталось бы под ними.
@@ -646,9 +693,20 @@ onBeforeUnmount(() => {
                   съедали бы место у самого имени. Смысл несут title и aria-label:
                   без текста внутри кнопка иначе осталась бы безымянной для скринридера.
                   Иконки рисуются currentColor, поэтому обе темы получаются даром.
+                  Сворачивание — на кнопке с именем, соседке кнопок блока, а не на всей
+                  строке: кнопка внутри кнопки невалидна, как и у заголовка секции.
                 -->
                 <div v-if="b.name && b.copy" class="block-head">
-                  <span class="block-name">{{ b.name }}</span>
+                  <button
+                    class="block-toggle"
+                    type="button"
+                    :title="t('output.toggleBlock')"
+                    :aria-expanded="!collapsedBlocks.has(b.name)"
+                    @click="onBlockToggle(b.name, $event)"
+                  >
+                    <span class="section-caret">{{ collapsedBlocks.has(b.name) ? '▸' : '▾' }}</span>
+                    <span class="block-name">{{ b.name }}</span>
+                  </button>
                   <button
                     class="copy-btn copy-btn--icon"
                     :title="t('output.copyOneTitle')"
@@ -682,7 +740,12 @@ onBeforeUnmount(() => {
                     </svg>
                   </button>
                 </div>
-                <pre v-if="b.html" class="code"><code class="hljs" v-html="b.html"></code></pre>
+                <!-- v-show по той же причине, что у секций: поиск обходит pre.code в DOM -->
+                <pre
+                  v-if="b.html"
+                  v-show="!(b.name && collapsedBlocks.has(b.name))"
+                  class="code"
+                ><code class="hljs" v-html="b.html"></code></pre>
               </div>
             </div>
           </section>
@@ -797,6 +860,12 @@ onBeforeUnmount(() => {
  * полоса). Меняя эти отступы, правьте и calc ниже.
  */
 .blocks {
+  /*
+   * Высота заголовка секции — отступ, под которым липнет заголовок типа. Задана,
+   * а не измерена: строку держит иконочная кнопка копирования (26px), у неё
+   * размеры в px и от шрифта темы не зависят.
+   */
+  --section-head-h: 35px;
   width: max-content;
   min-width: 100%;
   padding: 8px 0 24px;
@@ -932,8 +1001,10 @@ onBeforeUnmount(() => {
   position: sticky;
   top: 0;
   left: 0;
-  z-index: 1;
+  /* выше заголовков типов: уходя, секция утаскивает их под свой заголовок */
+  z-index: 2;
   width: var(--area-w);
+  height: var(--section-head-h);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -986,43 +1057,111 @@ onBeforeUnmount(() => {
  * Полоса слева — единственный носитель цвета категории. Цвета берутся из переменных
  * App.vue, поэтому в панели VSCode они автоматически приезжают из темы редактора.
  */
+/* Цвет — переменной на секции: полосу продолжает и липкий заголовок типа (.block-head::before). */
+.section {
+  --kind-color: var(--muted);
+}
+.section--path {
+  --kind-color: var(--accent);
+}
+.section--query {
+  --kind-color: var(--warning);
+}
+.section--body {
+  --kind-color: var(--success);
+}
+.section--response {
+  --kind-color: var(--danger);
+}
 .section-body {
   margin: 4px 16px 0;
   padding-left: 10px;
-  border-left: 2px solid var(--muted);
-}
-.section--path .section-body {
-  border-left-color: var(--accent);
-}
-.section--query .section-body {
-  border-left-color: var(--warning);
-}
-.section--body .section-body {
-  border-left-color: var(--success);
-}
-.section--response .section-body {
-  border-left-color: var(--danger);
+  border-left: 2px solid var(--kind-color);
 }
 /*
  * По своему коду, но не уже видимой части: рамка .block--scoped обводит именно
  * этот тип — и при прокрутке вправо, и у короткого типа рядом с широким.
  */
 .block {
+  position: relative;
   width: max-content;
   min-width: calc(var(--area-w) - 44px);
   margin-bottom: 4px;
 }
-/* блок, которым ограничен поиск: видно, почему в соседних DTO подсветки нет */
-.block--scoped {
-  outline: 1px dashed var(--accent);
-  outline-offset: 2px;
+/*
+ * Блок, которым ограничен поиск: видно, почему в соседних DTO подсветки нет.
+ * Псевдоэлементом, а не outline: outline блока рисуется под липким заголовком
+ * типа, и заливка его зазоров вырезала бы из рамки куски. z-index как у
+ * заголовка типа — поверх него по порядку в DOM, но под заголовком секции.
+ */
+.block--scoped::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  z-index: 1;
+  border: 1px dashed var(--accent);
   border-radius: 4px;
+  pointer-events: none;
 }
+/*
+ * Заголовок типа липнет под заголовком секции: в длинной DTO должно быть видно,
+ * чей это код, и доступны свернуть/скопировать/сравнить. Липнет в пределах своего
+ * блока — следующий тип выталкивает предыдущий сам.
+ *
+ * Слева липнет на место начала кода (16px поля + 12px отбивка .section-body),
+ * шириной в видимую часть. Боковые зазоры закрыты псевдоэлементами с фоном —
+ * иначе в них просвечивал бы прокручиваемый код, а слева в зазоре продолжается
+ * цветная полоса секции.
+ */
 .block-head {
+  position: sticky;
+  top: var(--section-head-h);
+  left: 28px;
+  z-index: 1;
+  width: calc(var(--area-w) - 44px);
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 8px;
+  margin-top: 4px;
+  padding: 4px 0;
+  background: var(--bg);
+}
+.block-head::before,
+.block-head::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.block-head::before {
+  left: -28px;
+  width: 28px;
+  background: linear-gradient(
+    to right,
+    var(--bg) 16px,
+    var(--kind-color) 16px,
+    var(--kind-color) 18px,
+    var(--bg) 18px
+  );
+}
+.block-head::after {
+  right: -16px;
+  width: 16px;
+  background: var(--bg);
+}
+.block-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.block-toggle:hover .block-name {
+  color: var(--text);
 }
 .block-name {
   font: 600 12px/1.4 ui-monospace, Consolas, monospace;

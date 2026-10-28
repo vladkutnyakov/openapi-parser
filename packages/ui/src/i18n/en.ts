@@ -65,6 +65,7 @@ export const en: Messages = {
   'output.copySection': 'Copy section',
   'output.copySectionTitle': 'Copies every type in the section without comments',
   'output.toggleSection': 'Collapse / expand section',
+  'output.toggleBlock': 'Collapse / expand type',
   'output.resize': 'Drag to resize; drag all the way left to collapse',
   'output.findPlaceholder': 'Find in types',
   'output.findPrev': 'Previous match (Shift+Enter)',
