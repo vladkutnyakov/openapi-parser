@@ -17,6 +17,7 @@ import { useFindInTypes } from '../composables/useFindInTypes';
 import { useHooksEditor } from '../composables/useHooksEditor';
 import FindBar from './FindBar.vue';
 import TypeDiffPanel from './TypeDiffPanel.vue';
+import TypeOutline, { type OutlineEntry } from './TypeOutline.vue';
 
 hljs.registerLanguage('typescript', typescript);
 
@@ -175,6 +176,113 @@ async function onBlockToggle(name: string, e: MouseEvent) {
   await nextTick();
   area.scrollTop += block.getBoundingClientRect().bottom - head.offsetHeight - stickyTop;
 }
+
+// ------------------------------------------------------------ карта типов
+
+// По умолчанию открыта: среди десятков DTO карта — главный способ найти нужный тип.
+const OUTLINE_KEY = 'openapi-parser:outline-open';
+const outlineOpen = ref(hostStorage.get(OUTLINE_KEY) !== '0');
+
+function toggleOutline() {
+  outlineOpen.value = !outlineOpen.value;
+  hostStorage.set(OUTLINE_KEY, outlineOpen.value ? '1' : '0');
+  // пока карта закрыта, текущий тип не отслеживается — догоняем при открытии
+  if (outlineOpen.value) void nextTick(updateActiveType);
+}
+
+// Безымянные блоки (ответ без тела, заглушка ошибки) в карту не попадают: перейти к ним не по чему.
+const outlineSections = computed<OutlineEntry[]>(() =>
+  sections.value
+    .map((s) => ({
+      kind: s.kind,
+      title: SECTION_KEY[s.kind],
+      names: s.blocks.flatMap((b) => (b.name ? [b.name] : [])),
+    }))
+    .filter((s) => s.names.length),
+);
+
+/** Высота липкого заголовка секции, под которым встаёт тип. */
+function sectionHeadHeight(el: Element): number {
+  return el.closest('.section')?.querySelector<HTMLElement>('.section-head')?.offsetHeight ?? 0;
+}
+
+/** Тип, который сейчас на экране вывода, — `kind:name`; подсвечивается в карте. */
+const activeType = ref<string | null>(null);
+
+/**
+ * Переход из карты. Блок ищется по секции и имени, а не по одному имени: один тип
+ * может встретиться в разных секциях. Свёрнутое сначала разворачивается — у скрытого
+ * блока рамка нулевая, и прокрутить к нему было бы нельзя. Блок встаёт сразу под
+ * липким заголовком секции, а горизонталь сбрасывается: видно начало типа.
+ */
+async function goToType(kind: TypeKind, name: string) {
+  let revealed = false;
+  if (collapsed.value.has(kind)) {
+    toggleSection(kind);
+    revealed = true;
+  }
+  if (collapsedBlocks.value.has(name)) {
+    toggleBlock(name);
+    revealed = true;
+  }
+  if (revealed) await nextTick();
+  const area = scrollArea.value;
+  const block = blocksRoot.value?.querySelector<HTMLElement>(
+    `.section[data-kind="${kind}"] .block[data-name="${CSS.escape(name)}"]`,
+  );
+  if (!area || !block) return;
+  // У последних типов прокрутка упирается в конец, и тип не доезжает до верха —
+  // тогда отслеживание выбрало бы тот, что выше. Выбор пользователя важнее:
+  // пропускаем ровно одно событие прокрутки, вызванное этим переходом.
+  skipSpy = true;
+  area.scrollLeft = 0;
+  area.scrollTop += block.getBoundingClientRect().top - area.getBoundingClientRect().top - sectionHeadHeight(block);
+  activeType.value = `${kind}:${name}`;
+}
+
+/*
+ * Текущий тип — последний, чей верх уже поднялся до линии под липким заголовком
+ * секции. Считается раз в кадр и только при открытой карте: обход блоков на каждое
+ * событие прокрутки — лишняя работа, а без карты результат никому не нужен.
+ */
+let spyFrame = 0;
+let skipSpy = false;
+
+function onAreaScroll() {
+  if (!outlineOpen.value || spyFrame) return;
+  spyFrame = requestAnimationFrame(() => {
+    spyFrame = 0;
+    if (skipSpy) {
+      skipSpy = false;
+      return;
+    }
+    updateActiveType();
+  });
+}
+
+function updateActiveType() {
+  const area = scrollArea.value;
+  const root = blocksRoot.value;
+  if (!area || !root) return;
+  const top = area.getBoundingClientRect().top;
+  let current: string | null = null;
+  for (const block of root.querySelectorAll<HTMLElement>('.block[data-name]')) {
+    const rect = block.getBoundingClientRect();
+    if (!rect.height) continue; // внутри свёрнутой секции
+    // +1 гасит дробные пиксели после перехода из карты
+    const below = rect.top > top + sectionHeadHeight(block) + 1;
+    // в самом начале вывода выше линии нет ничего — текущим считается первый тип
+    if (below && current) break;
+    current = `${block.closest<HTMLElement>('.section')?.dataset.kind}:${block.dataset.name}`;
+    if (below) break;
+  }
+  activeType.value = current;
+}
+
+// смена эндпоинта пересоздаёт блоки — текущий тип пересчитываем по новому DOM
+watch(view, () => {
+  if (outlineOpen.value) void nextTick(updateActiveType);
+});
 
 // открытая панель сравнения: имя типа + его чистый код
 const compare = ref<{ name: string; code: string } | null>(null);
@@ -521,6 +629,7 @@ watch(
 
 onBeforeUnmount(() => {
   areaObserver?.disconnect();
+  cancelAnimationFrame(spyFrame);
   document.removeEventListener('keydown', onDocKeydown);
   document.removeEventListener('pointerdown', onDocPointerdown);
   // реестр подсветок глобальный на документ — иначе она пережила бы компонент
@@ -586,6 +695,19 @@ onBeforeUnmount(() => {
         </header>
         <button
           class="copy-btn copy-btn--icon copy-btn--all"
+          :class="{ 'copy-btn--active': outlineOpen }"
+          type="button"
+          :title="t('outline.toggle')"
+          :aria-label="t('outline.toggle')"
+          :aria-pressed="outlineOpen"
+          @click="toggleOutline"
+        >
+          <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M2.5 4h2M2.5 8h2M2.5 12h2M6.5 4h7M8.5 8h5M8.5 12h5" />
+          </svg>
+        </button>
+        <button
+          class="copy-btn copy-btn--icon copy-btn--all"
           type="button"
           :title="t('output.copyAllTitle')"
           :aria-label="t('output.copyAll')"
@@ -600,156 +722,170 @@ onBeforeUnmount(() => {
           </svg>
         </button>
       </div>
-      <div ref="scrollArea" class="scroll-area" :style="areaWidth ? { '--area-w': `${areaWidth}px` } : undefined">
-        <div ref="blocksRoot" class="blocks">
+      <!-- Карта — соседом области прокрутки: она не прокручивается вместе с типами -->
+      <div class="output-main">
+        <div
+          ref="scrollArea"
+          class="scroll-area"
+          :style="areaWidth ? { '--area-w': `${areaWidth}px` } : undefined"
+          @scroll.passive="onAreaScroll"
+        >
+          <div ref="blocksRoot" class="blocks">
 
-          <section
-            v-for="s in sections"
-            :key="s.kind"
-            class="section"
-            :class="`section--${s.kind}`"
-            :data-kind="s.kind"
-          >
-            <!--
-              Две настоящие кнопки-соседа, а не вложенные друг в друга: кнопка внутри
-              кнопки — невалидная разметка, и скринридер такую вложенность схлопывает.
-              Сворачивание висит на button, а не на div с @click, чтобы ходить с клавиатуры.
-            -->
-            <div class="section-head">
-              <button
-                class="section-toggle"
-                type="button"
-                :title="t('output.toggleSection')"
-                :aria-expanded="!collapsed.has(s.kind)"
-                @click="onSectionToggle(s.kind, $event)"
-              >
-                <span class="section-caret">{{ collapsed.has(s.kind) ? '▸' : '▾' }}</span>
-                <span class="section-title">{{ t(SECTION_KEY[s.kind]) }}</span>
-                <span class="section-count">{{ s.blocks.length }}</span>
-              </button>
-              <button
-                v-if="s.code"
-                class="copy-btn copy-btn--icon section-copy"
-                type="button"
-                :title="t('output.copySectionTitle')"
-                :aria-label="t('output.copySection')"
-                @click="copy(s.code, `s:${s.kind}`)"
-              >
-                <svg
-                  v-if="copiedKey === `s:${s.kind}`"
-                  class="icon icon--ok"
-                  viewBox="0 0 16 16"
-                  aria-hidden="true"
+            <section
+              v-for="s in sections"
+              :key="s.kind"
+              class="section"
+              :class="`section--${s.kind}`"
+              :data-kind="s.kind"
+            >
+              <!--
+                Две настоящие кнопки-соседа, а не вложенные друг в друга: кнопка внутри
+                кнопки — невалидная разметка, и скринридер такую вложенность схлопывает.
+                Сворачивание висит на button, а не на div с @click, чтобы ходить с клавиатуры.
+              -->
+              <div class="section-head">
+                <button
+                  class="section-toggle"
+                  type="button"
+                  :title="t('output.toggleSection')"
+                  :aria-expanded="!collapsed.has(s.kind)"
+                  @click="onSectionToggle(s.kind, $event)"
                 >
-                  <path d="M3.5 8.5l3 3 6-6" />
-                </svg>
-                <svg v-else class="icon" viewBox="0 0 16 16" aria-hidden="true">
-                  <rect x="5.5" y="5.5" width="8" height="9" rx="1.5" />
-                  <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
-                </svg>
-              </button>
-            </div>
-
-            <!--
-              v-show, а не v-if: скрытые pre.code обязаны остаться в документе, иначе
-              rebuildHighlights их не обойдёт и Ctrl+F молча терял бы совпадения в
-              свёрнутой секции — счётчик врал бы пользователю.
-            -->
-            <div v-show="!collapsed.has(s.kind)" class="section-body">
-              <div
-                v-for="(b, i) in s.blocks"
-                :key="i"
-                class="block"
-                :class="{ 'block--scoped': findOpen && b.name && scope === b.name }"
-                :data-name="b.name ?? undefined"
-              >
-                <!--
-                  Строка метаданных над блоком: статус ответа с описанием и Content-Type.
-                  Раньше это были комментарии внутри кода — там они красились как
-                  описания полей и в потоке типов не читались. status и description
-                  приходят из спеки как есть, переводится только рамка вокруг них.
-                -->
-                <div v-if="b.meta && (b.meta.status || b.meta.contentType)" class="block-meta">
-                  <span v-if="b.meta.status" class="meta-status">{{ b.meta.status }}</span>
-                  <span v-if="b.meta.description" class="meta-desc">{{ b.meta.description }}</span>
-                  <span v-if="b.meta.noBody" class="meta-nobody">{{ t('output.noResponseBody') }}</span>
-                  <span
-                    v-if="b.meta.contentType"
-                    class="meta-ct"
-                    :title="
-                      b.meta.otherContentTypes?.length
-                        ? t('output.contentTypeOthers', { list: b.meta.otherContentTypes.join(', ') })
-                        : t('output.contentType')
-                    "
+                  <span class="section-caret">{{ collapsed.has(s.kind) ? '▸' : '▾' }}</span>
+                  <span class="section-title">{{ t(SECTION_KEY[s.kind]) }}</span>
+                  <span class="section-count">{{ s.blocks.length }}</span>
+                </button>
+                <button
+                  v-if="s.code"
+                  class="copy-btn copy-btn--icon section-copy"
+                  type="button"
+                  :title="t('output.copySectionTitle')"
+                  :aria-label="t('output.copySection')"
+                  @click="copy(s.code, `s:${s.kind}`)"
+                >
+                  <svg
+                    v-if="copiedKey === `s:${s.kind}`"
+                    class="icon icon--ok"
+                    viewBox="0 0 16 16"
+                    aria-hidden="true"
                   >
-                    {{ b.meta.contentType }}
-                    <span v-if="b.meta.otherContentTypes?.length" class="meta-ct-more">
-                      {{ t('output.contentTypeMore', { count: b.meta.otherContentTypes.length }) }}
-                    </span>
-                  </span>
-                </div>
-                <!--
-                  Кнопки блока — иконочные: на строку их две у каждого типа, и подписи
-                  съедали бы место у самого имени. Смысл несут title и aria-label:
-                  без текста внутри кнопка иначе осталась бы безымянной для скринридера.
-                  Иконки рисуются currentColor, поэтому обе темы получаются даром.
-                  Сворачивание — на кнопке с именем, соседке кнопок блока, а не на всей
-                  строке: кнопка внутри кнопки невалидна, как и у заголовка секции.
-                -->
-                <div v-if="b.name && b.copy" class="block-head">
-                  <button
-                    class="block-toggle"
-                    type="button"
-                    :title="t('output.toggleBlock')"
-                    :aria-expanded="!collapsedBlocks.has(b.name)"
-                    @click="onBlockToggle(b.name, $event)"
-                  >
-                    <span class="section-caret">{{ collapsedBlocks.has(b.name) ? '▸' : '▾' }}</span>
-                    <span class="block-name">{{ b.name }}</span>
-                  </button>
-                  <button
-                    class="copy-btn copy-btn--icon"
-                    :title="t('output.copyOneTitle')"
-                    :aria-label="t('output.copy')"
-                    @click="copy(b.copy, `${s.kind}:${i}`)"
-                  >
-                    <svg
-                      v-if="copiedKey === `${s.kind}:${i}`"
-                      class="icon icon--ok"
-                      viewBox="0 0 16 16"
-                      aria-hidden="true"
-                    >
-                      <path d="M3.5 8.5l3 3 6-6" />
-                    </svg>
-                    <svg v-else class="icon" viewBox="0 0 16 16" aria-hidden="true">
-                      <rect x="5.5" y="5.5" width="8" height="9" rx="1.5" />
-                      <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
-                    </svg>
-                  </button>
-                  <button
-                    class="copy-btn copy-btn--icon"
-                    :class="{ 'copy-btn--active': compare?.name === b.name }"
-                    :title="t('output.compareTitle')"
-                    :aria-label="t('output.compare')"
-                    :aria-pressed="compare?.name === b.name"
-                    @click="compare = { name: b.name!, code: b.copy }"
-                  >
-                    <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-                      <path d="M6.5 3.5h-3v9h3M9.5 3.5h3v9h-3" />
-                      <path d="M8 1.5v13" />
-                    </svg>
-                  </button>
-                </div>
-                <!-- v-show по той же причине, что у секций: поиск обходит pre.code в DOM -->
-                <pre
-                  v-if="b.html"
-                  v-show="!(b.name && collapsedBlocks.has(b.name))"
-                  class="code"
-                ><code class="hljs" v-html="b.html"></code></pre>
+                    <path d="M3.5 8.5l3 3 6-6" />
+                  </svg>
+                  <svg v-else class="icon" viewBox="0 0 16 16" aria-hidden="true">
+                    <rect x="5.5" y="5.5" width="8" height="9" rx="1.5" />
+                    <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
+                  </svg>
+                </button>
               </div>
-            </div>
-          </section>
+
+              <!--
+                v-show, а не v-if: скрытые pre.code обязаны остаться в документе, иначе
+                rebuildHighlights их не обойдёт и Ctrl+F молча терял бы совпадения в
+                свёрнутой секции — счётчик врал бы пользователю.
+              -->
+              <div v-show="!collapsed.has(s.kind)" class="section-body">
+                <div
+                  v-for="(b, i) in s.blocks"
+                  :key="i"
+                  class="block"
+                  :class="{ 'block--scoped': findOpen && b.name && scope === b.name }"
+                  :data-name="b.name ?? undefined"
+                >
+                  <!--
+                    Строка метаданных над блоком: статус ответа с описанием и Content-Type.
+                    Раньше это были комментарии внутри кода — там они красились как
+                    описания полей и в потоке типов не читались. status и description
+                    приходят из спеки как есть, переводится только рамка вокруг них.
+                  -->
+                  <div v-if="b.meta && (b.meta.status || b.meta.contentType)" class="block-meta">
+                    <span v-if="b.meta.status" class="meta-status">{{ b.meta.status }}</span>
+                    <span v-if="b.meta.description" class="meta-desc">{{ b.meta.description }}</span>
+                    <span v-if="b.meta.noBody" class="meta-nobody">{{ t('output.noResponseBody') }}</span>
+                    <span
+                      v-if="b.meta.contentType"
+                      class="meta-ct"
+                      :title="
+                        b.meta.otherContentTypes?.length
+                          ? t('output.contentTypeOthers', { list: b.meta.otherContentTypes.join(', ') })
+                          : t('output.contentType')
+                      "
+                    >
+                      {{ b.meta.contentType }}
+                      <span v-if="b.meta.otherContentTypes?.length" class="meta-ct-more">
+                        {{ t('output.contentTypeMore', { count: b.meta.otherContentTypes.length }) }}
+                      </span>
+                    </span>
+                  </div>
+                  <!--
+                    Кнопки блока — иконочные: на строку их две у каждого типа, и подписи
+                    съедали бы место у самого имени. Смысл несут title и aria-label:
+                    без текста внутри кнопка иначе осталась бы безымянной для скринридера.
+                    Иконки рисуются currentColor, поэтому обе темы получаются даром.
+                    Сворачивание — на кнопке с именем, соседке кнопок блока, а не на всей
+                    строке: кнопка внутри кнопки невалидна, как и у заголовка секции.
+                  -->
+                  <div v-if="b.name && b.copy" class="block-head">
+                    <button
+                      class="block-toggle"
+                      type="button"
+                      :title="t('output.toggleBlock')"
+                      :aria-expanded="!collapsedBlocks.has(b.name)"
+                      @click="onBlockToggle(b.name, $event)"
+                    >
+                      <span class="section-caret">{{ collapsedBlocks.has(b.name) ? '▸' : '▾' }}</span>
+                      <span class="block-name">{{ b.name }}</span>
+                    </button>
+                    <button
+                      class="copy-btn copy-btn--icon"
+                      :title="t('output.copyOneTitle')"
+                      :aria-label="t('output.copy')"
+                      @click="copy(b.copy, `${s.kind}:${i}`)"
+                    >
+                      <svg
+                        v-if="copiedKey === `${s.kind}:${i}`"
+                        class="icon icon--ok"
+                        viewBox="0 0 16 16"
+                        aria-hidden="true"
+                      >
+                        <path d="M3.5 8.5l3 3 6-6" />
+                      </svg>
+                      <svg v-else class="icon" viewBox="0 0 16 16" aria-hidden="true">
+                        <rect x="5.5" y="5.5" width="8" height="9" rx="1.5" />
+                        <path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1" />
+                      </svg>
+                    </button>
+                    <button
+                      class="copy-btn copy-btn--icon"
+                      :class="{ 'copy-btn--active': compare?.name === b.name }"
+                      :title="t('output.compareTitle')"
+                      :aria-label="t('output.compare')"
+                      :aria-pressed="compare?.name === b.name"
+                      @click="compare = { name: b.name!, code: b.copy }"
+                    >
+                      <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
+                        <path d="M6.5 3.5h-3v9h3M9.5 3.5h3v9h-3" />
+                        <path d="M8 1.5v13" />
+                      </svg>
+                    </button>
+                  </div>
+                  <!-- v-show по той же причине, что у секций: поиск обходит pre.code в DOM -->
+                  <pre
+                    v-if="b.html"
+                    v-show="!(b.name && collapsedBlocks.has(b.name))"
+                    class="code"
+                  ><code class="hljs" v-html="b.html"></code></pre>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
+        <TypeOutline
+          v-if="outlineOpen"
+          :sections="outlineSections"
+          :active="activeType"
+          @go="goToType"
+        />
       </div>
       <TypeDiffPanel
         v-if="compare"
@@ -769,10 +905,19 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background: var(--bg);
 }
-/* Одна прокрутка на обе оси: широкие типы листаются одной полосой, а не каждый своей. */
+.output-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+/*
+ * Одна прокрутка на обе оси: широкие типы листаются одной полосой, а не каждый своей.
+ * min-width: 0 — иначе flex-элемент растянулся бы под широкий код и вытолкнул карту.
+ */
 .scroll-area {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
 }

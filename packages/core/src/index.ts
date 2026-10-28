@@ -16,3 +16,4 @@ export * from './url-state';
 export * from './recent-sources';
 export * from './find-matches';
 export * from './virtual-window';
+export * from './outline';
